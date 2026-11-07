@@ -103,7 +103,7 @@ export const params = {
 const LOOK_INFLATON: Partial<FoamLook> = { edge: 1.6, node: 6, haze: 0.5, core: 0.55, churn: 0.12, bubbling: 0.15, breathe: 0.02, warp: 0.1 };
 
 const ACCURACY_NOTE =
-  'Inflation is strongly supported indirectly; its mechanism is unknown. Ripples follow the measured spectrum; their contrast (really about 1 part in 100,000) is exaggerated and the 10²⁶-fold stretch is shown on a compressed scale.';
+  'Inflation is strongly supported indirectly; its mechanism is unknown. Ripples follow the measured spectrum, with contrast (really 1 in 100,000) exaggerated and the stretch compressed.';
 
 export default (): CosmicScene => {
   let renderer: WebGPURenderer;
