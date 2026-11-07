@@ -20,6 +20,7 @@ export const SCENES: Record<string, Loader> = {
   life: () => import('./life/index.ts'),
   now: () => import('./now/index.ts'),
   _placeholder: () => import('./_placeholder/index.ts'),
+  _web: () => import('./_web/index.ts'),
 };
 
 export const SCENE_IDS = Object.keys(SCENES).filter((k) => !k.startsWith('_'));

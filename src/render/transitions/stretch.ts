@@ -1,6 +1,6 @@
 // Anisotropic stretch of the outgoing frame (expansion feel) into the incoming (HANDOFF §10.4).
-import { float, mix, pow, smoothstep, vec2, vec4, type TextureNode } from 'three/tsl';
-import type { Node } from 'three/webgpu';
+import { float, mix, pow, smoothstep, vec2, vec4 } from 'three/tsl';
+import type { Node, TextureNode } from 'three/webgpu';
 
 const TAPS = 8;
 

@@ -104,7 +104,7 @@ export function createGlobalUniforms(): GlobalUniforms {
  */
 export function blackbodyNode(lut: DataTexture, log10T: Node<'float'> | number) {
   const u = clamp(
-    float(log10T).sub(BLACKBODY_LUT_LOG10_MIN).div(BLACKBODY_LUT_LOG10_MAX - BLACKBODY_LUT_LOG10_MIN),
+    (typeof log10T === 'number' ? float(log10T) : log10T).sub(BLACKBODY_LUT_LOG10_MIN).div(BLACKBODY_LUT_LOG10_MAX - BLACKBODY_LUT_LOG10_MIN),
     0,
     1,
   );

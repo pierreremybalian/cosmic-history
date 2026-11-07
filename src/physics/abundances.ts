@@ -1,6 +1,6 @@
 // Big Bang nucleosynthesis, smooth model (HANDOFF §6.6). Not a reaction network.
 // n/p follows weak equilibrium, freezes out near 1 s, then decays (τₙ = 879 s). When the deuterium
-// bottleneck breaks (~160–320 s) the surviving neutrons are locked into ⁴He. The freeze-out fraction is
+// bottleneck breaks (~180–360 s) the surviving neutrons are locked into ⁴He. The freeze-out fraction is
 // calibrated at load so the final helium mass fraction lands on the measured Yₚ.
 
 import {
@@ -32,11 +32,11 @@ export interface Abundances {
 }
 
 const FREEZE_SHARPNESS = 8;
-const LOG_T_BOTTLENECK_START = Math.log10(160);
-const LOG_T_BOTTLENECK_END = Math.log10(320);
+const LOG_T_BOTTLENECK_START = Math.log10(180);
+const LOG_T_BOTTLENECK_END = Math.log10(360);
 const LOG_T_LATE_END = Math.log10(1000);
 const D_PEAK_MASS_FRACTION = 5e-3;
-const D_PEAK_LOG_T = Math.log10(250);
+const D_PEAK_LOG_T = Math.log10(270);
 const D_PEAK_WIDTH = 0.12;
 
 /** Weak-equilibrium neutron fraction n/(n+p) at t. */

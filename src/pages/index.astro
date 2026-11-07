@@ -1,0 +1,464 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Renderer from '../render/Renderer.astro';
+import TimelineNav from '../nav/TimelineNav.astro';
+import Hud from '../hud/Hud.astro';
+import { CHAPTERS, CHAPTER_STARTS } from '../time/chapters.ts';
+import { VH_PER_WEIGHT } from '../scroll/driver.ts';
+import { ACCURACY_HELP, ACCURACY_LABEL, CREDITS, SITE } from '../data/site.ts';
+import { AGE_LABEL } from '../time/format.ts';
+
+const entries = await getCollection('chapters');
+const byId = new Map(entries.map((e) => [e.data.id, e]));
+const chapters = await Promise.all(
+  CHAPTERS.map(async (c, i) => {
+    const entry = byId.get(c.id);
+    const rendered = entry ? await render(entry) : null;
+    const p0 = CHAPTER_STARTS[i]!;
+    const p1 = CHAPTER_STARTS[i + 1]!;
+    return {
+      c,
+      i,
+      p0,
+      p1,
+      data: entry?.data ?? {
+        id: c.id,
+        title: c.id,
+        kicker: '',
+        summary: '',
+        beats: [],
+        howWeKnow: '',
+        sources: [],
+      },
+      Content: rendered?.Content ?? null,
+    };
+  }),
+);
+const titles = Object.fromEntries(chapters.map((ch) => [ch.c.id, ch.data.title]));
+const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
+---
+
+<Base>
+  <Renderer />
+  <TimelineNav titles={titles} />
+  <Hud />
+
+  <header class="hero" data-hero>
+    <p class="hero-kicker">{AGE_LABEL} in one scroll</p>
+    <h1>{SITE.name}</h1>
+    <p class="hero-lede">
+      From the first instant physics can describe to this one. Scroll to move through time. Every scene says how sure we are.
+    </p>
+    <p class="hero-hint" aria-hidden="true"><span></span>Scroll</p>
+  </header>
+
+  <main id="story" class="story" data-story style={`height: calc(${totalWeight * VH_PER_WEIGHT}svh + 100svh)`}>
+    {
+      chapters.map(({ c, i, p0, p1, data, Content }) => (
+        <section
+          id={c.id}
+          class="chapter"
+          data-chapter={c.id}
+          aria-labelledby={`h-${c.id}`}
+          style={`top: ${(p0 * totalWeight * VH_PER_WEIGHT).toFixed(3)}svh; height: ${(c.scrollWeight * VH_PER_WEIGHT).toFixed(3)}svh`}
+        >
+          <div class="head" style={i === 0 ? 'top: 92svh' : undefined}>
+            <p class="kicker">{data.kicker}</p>
+            <h2 id={`h-${c.id}`}>{data.title}</h2>
+            {data.summary && <p class="summary">{data.summary}</p>}
+            {Content && (
+              <div class="body">
+                <Content />
+              </div>
+            )}
+          </div>
+          {data.beats.map((b) => (
+            <p class="beat" style={`top: calc(${(b.local * 100).toFixed(3)}% + 52svh)`} data-beat-progress={p0 + b.local * (p1 - p0)}>
+              {b.time && <span class="beat-time">{b.time}</span>}
+              {b.text}
+            </p>
+          ))}
+          {data.howWeKnow && (
+            <details class="how" style="top: calc(92% + 40svh)">
+              <summary>How we know</summary>
+              <p>{data.howWeKnow}</p>
+              {data.sources.length > 0 && (
+                <ul>
+                  {data.sources.map((s) => (
+                    <li>
+                      <a href={s.url} rel="noopener" target="_blank">
+                        {s.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          )}
+        </section>
+      ))
+    }
+  </main>
+
+  <footer class="credits" id="credits" aria-labelledby="credits-h">
+    <div class="credits-inner">
+      <h2 id="credits-h">About this journey</h2>
+      <p class="lede">
+        Expansion, temperature, colour and composition on screen are computed in your browser from the Planck 2018 cosmology. Where we
+        exaggerate a count, a speed or a ratio to make it visible, the scene says so.
+      </p>
+      <h3>How sure are we?</h3>
+      <dl class="acc">
+        {(Object.keys(ACCURACY_LABEL) as (keyof typeof ACCURACY_LABEL)[]).map((k) => (
+          <div data-acc={k}>
+            <dt>{ACCURACY_LABEL[k]}</dt>
+            <dd>{ACCURACY_HELP[k]}</dd>
+          </div>
+        ))}
+      </dl>
+      <h3>Credits and data</h3>
+      <ul class="credit-list">
+        {CREDITS.map((c) => (
+          <li>
+            <b>{c.label}.</b> {c.text}
+            {c.url && (
+              <>
+                {' '}
+                <a href={c.url} rel="noopener" target="_blank">
+                  Source
+                </a>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p class="fine">
+        Keyboard: ↑ ↓ / Page Up / Page Down step through moments, Home and End jump to the start and to now. Rendering quality can be changed
+        in the timeline panel.
+      </p>
+    </div>
+  </footer>
+
+  <noscript>
+    <p class="noscript">This journey draws the universe with WebGPU or WebGL and needs JavaScript. The story text above still reads in order.</p>
+  </noscript>
+</Base>
+
+<script>
+  import { createScrollDriver } from '../scroll/driver.ts';
+  import { $progress } from '../state/store.ts';
+
+  document.documentElement.classList.add('js');
+  const driver = createScrollDriver(document.querySelector<HTMLElement>('[data-story]')!);
+  (window as unknown as { __driver?: unknown }).__driver = driver;
+
+  const hero = document.querySelector<HTMLElement>('[data-hero]')!;
+  $progress.subscribe((p) => {
+    const o = Math.max(0, 1 - p / 0.012);
+    hero.style.opacity = String(o);
+    hero.style.visibility = o === 0 ? 'hidden' : 'visible';
+  });
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) e.target.classList.toggle('is-visible', e.isIntersecting);
+    },
+    { rootMargin: '-12% 0px -18% 0px' },
+  );
+  document.querySelectorAll('.beat, .head, .how').forEach((el) => io.observe(el));
+</script>
+
+<style>
+  .hero {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 max(1.5rem, 7vw);
+    max-width: 52rem;
+    pointer-events: none;
+  }
+  .hero-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-glow);
+  }
+  .hero h1 {
+    font-family: var(--font-serif);
+    font-weight: 300;
+    font-size: clamp(3rem, 9vw, 7.5rem);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: var(--color-paper);
+    margin-top: 0.6rem;
+    text-shadow: 0 0 40px rgb(0 0 0 / 0.6);
+  }
+  .hero-lede {
+    margin-top: 1.4rem;
+    max-width: 30rem;
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--color-fog);
+  }
+  .hero-hint {
+    margin-top: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-mute);
+  }
+  .hero-hint span {
+    width: 1px;
+    height: 2.6rem;
+    background: linear-gradient(var(--color-paper), transparent);
+    animation: drip 2.4s var(--ease-cosmic) infinite;
+    transform-origin: top;
+  }
+  @keyframes drip {
+    0% {
+      transform: scaleY(0);
+      opacity: 1;
+    }
+    70% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleY(1);
+      opacity: 0;
+    }
+  }
+
+  .story {
+    position: relative;
+    z-index: 5;
+  }
+  .chapter {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+  }
+  .chapter > * {
+    pointer-events: auto;
+  }
+  .head,
+  .beat,
+  .how {
+    position: absolute;
+    left: max(1.5rem, 6vw);
+    width: min(30rem, calc(100vw - var(--rail-w) - 4rem));
+  }
+  .head {
+    top: 30svh;
+    text-shadow: 0 1px 24px rgb(0 0 0 / 0.75);
+  }
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-glow);
+  }
+  .head h2 {
+    font-family: var(--font-serif);
+    font-weight: 350;
+    font-size: clamp(2.2rem, 4.6vw, 3.8rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    color: var(--color-paper);
+    margin-top: 0.5rem;
+  }
+  .summary {
+    margin-top: 0.9rem;
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    font-style: italic;
+    line-height: 1.45;
+    color: var(--color-fog);
+  }
+  .body {
+    margin-top: 0.9rem;
+    font-size: 0.98rem;
+    line-height: 1.6;
+    color: var(--color-fog);
+  }
+  .body :global(p + p) {
+    margin-top: 0.7rem;
+  }
+  .beat {
+    font-family: var(--font-serif);
+    font-size: clamp(1.15rem, 1.6vw, 1.4rem);
+    line-height: 1.45;
+    color: var(--color-paper);
+    padding: 0.9rem 1.1rem;
+    background: rgb(4 5 12 / 0.42);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-left: 2px solid rgb(255 217 160 / 0.6);
+    border-radius: 0 0.6rem 0.6rem 0;
+  }
+  .beat-time {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    color: var(--color-glow);
+    margin-bottom: 0.25rem;
+  }
+  :global(html.js) .head,
+  :global(html.js) .beat,
+  :global(html.js) .how {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity 0.9s var(--ease-cosmic),
+      transform 0.9s var(--ease-cosmic);
+  }
+  :global(html.js) .is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  .how {
+    font-size: 0.85rem;
+    color: var(--color-fog);
+    background: rgb(4 5 12 / 0.6);
+    border: 1px solid var(--color-line);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.9rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .how summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-signal);
+  }
+  .how p {
+    margin-top: 0.6rem;
+    line-height: 1.55;
+  }
+  .how ul {
+    margin-top: 0.5rem;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+  }
+  .how a,
+  .credits a {
+    color: var(--color-signal);
+    text-decoration: underline;
+    text-decoration-color: rgb(143 208 255 / 0.4);
+    text-underline-offset: 2px;
+  }
+  .credits {
+    position: relative;
+    z-index: 5;
+    background: linear-gradient(rgb(2 2 5 / 0), rgb(2 2 5 / 0.92) 12rem, var(--color-void));
+    padding: 16rem max(1.5rem, 6vw) 6rem;
+  }
+  .credits-inner {
+    max-width: 44rem;
+  }
+  .credits h2 {
+    font-family: var(--font-serif);
+    font-weight: 350;
+    font-size: 2.4rem;
+    color: var(--color-paper);
+  }
+  .credits h3 {
+    margin-top: 2.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-glow);
+  }
+  .lede {
+    margin-top: 1rem;
+    font-size: 1.05rem;
+    line-height: 1.6;
+  }
+  .acc {
+    margin-top: 0.9rem;
+    display: grid;
+    gap: 0.6rem;
+  }
+  .acc div {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.8rem;
+  }
+  .acc dt {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--acc);
+  }
+  [data-acc='measured'] {
+    --acc: var(--color-acc-measured);
+  }
+  [data-acc='simulated'] {
+    --acc: var(--color-acc-simulated);
+  }
+  [data-acc='modelled'] {
+    --acc: var(--color-acc-modelled);
+  }
+  [data-acc='metaphor'] {
+    --acc: var(--color-acc-metaphor);
+  }
+  .credit-list {
+    margin-top: 0.9rem;
+    display: grid;
+    gap: 0.8rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+  .credit-list b {
+    color: var(--color-paper);
+    font-weight: 500;
+  }
+  .fine {
+    margin-top: 2.5rem;
+    font-size: 0.78rem;
+    color: var(--color-mute);
+  }
+  .noscript {
+    position: fixed;
+    bottom: 1rem;
+    left: 1rem;
+    right: 1rem;
+    z-index: 50;
+    padding: 0.8rem 1rem;
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: 0.6rem;
+  }
+  @media (max-width: 767px) {
+    .head,
+    .beat,
+    .how {
+      left: 1rem;
+      width: calc(100vw - 2rem);
+    }
+    .head {
+      top: 42svh;
+    }
+    .hero {
+      padding-top: 4rem;
+    }
+  }
+</style>

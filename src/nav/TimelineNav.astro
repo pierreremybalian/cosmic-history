@@ -1,0 +1,663 @@
+---
+// Sticky timeline rail: a minimap of the scroll (HANDOFF §11.2). Positions come from timeToProgress so the
+// rail matches the scroll exactly. Right edge on desktop (vertical), top strip on mobile (horizontal).
+import events from '../../public/data/events.json';
+import eras from '../../public/data/eras.json';
+import { CHAPTERS, CHAPTER_STARTS, lookbackToProgress, timeToProgress } from '../time/chapters.ts';
+import { CATEGORIES, CATEGORY_VAR, type Category } from '../data/schema.ts';
+import { formatDuration, formatLookback } from '../time/format.ts';
+import { YEAR_S, T_PLANCK_S } from '../physics/constants.ts';
+import { AGE_SECONDS } from '../physics/cosmology.ts';
+import { ACCURACY_HELP, ACCURACY_LABEL } from '../data/site.ts';
+
+interface Props {
+  titles: Record<string, string>;
+}
+const { titles } = Astro.props;
+
+const pOf = (tSec: number, lookbackYears?: number) =>
+  lookbackYears !== undefined ? lookbackToProgress(lookbackYears * YEAR_S) : timeToProgress(tSec);
+
+const fmtWhen = (tSec: number, lookbackYears?: number) =>
+  lookbackYears !== undefined ? formatLookback(lookbackYears * YEAR_S) : formatDuration(tSec, 'long');
+
+const evs = events.map((e) => {
+  const lb = e.lookback_years;
+  const p = pOf(e.t_seconds.best, lb?.best);
+  const pMin = lb ? pOf(0, lb.max) : timeToProgress(e.t_seconds.min);
+  const pMax = lb ? pOf(0, lb.min) : timeToProgress(e.t_seconds.max);
+  const exact = e.t_seconds.min === e.t_seconds.max;
+  const range = exact
+    ? ''
+    : `${fmtWhen(e.t_seconds.min, lb?.max)} – ${fmtWhen(e.t_seconds.max, lb?.min)}`;
+  return {
+    ...e,
+    p,
+    pMin: Math.min(pMin, p),
+    pMax: Math.max(pMax, p),
+    range,
+    color: `var(${CATEGORY_VAR[e.category as Category]})`,
+  };
+});
+
+const clampStart = (s: number) => Math.max(s, T_PLANCK_S);
+const epochs = eras
+  .filter((e) => e.lane === 'Epoch')
+  .map((e) => ({ ...e, p0: timeToProgress(clampStart(e.start_s)), p1: e.end_s >= AGE_SECONDS ? 1 : timeToProgress(e.end_s) }));
+const DOMINANT_COLOR: Record<string, string> = {
+  inflaton: 'var(--cat-spacetime)',
+  radiation: 'var(--color-glow)',
+  matter: 'var(--cat-structure)',
+  'dark-energy': 'var(--cat-dark)',
+};
+const dominant = eras
+  .filter((e) => e.lane === 'Dominant component')
+  .map((e) => ({
+    ...e,
+    p0: timeToProgress(clampStart(e.start_s)),
+    p1: e.end_s >= AGE_SECONDS ? 1 : timeToProgress(e.end_s),
+    color: DOMINANT_COLOR[e.id] ?? 'var(--color-mute)',
+  }));
+// Before inflation there is no dominant component we can name.
+const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id, p: CHAPTER_STARTS[i]! }));
+---
+
+<nav class="rail" aria-label="Timeline of the universe" data-rail data-own-keys>
+  <div class="readout" data-readout>
+    <p class="when" data-when aria-hidden="true">5.4 × 10⁻⁴⁴ s</p>
+    <p class="chapter" data-chapter-title aria-hidden="true">{chapters[0]!.title}</p>
+    <p class="phys" data-phys aria-hidden="true"></p>
+    <button type="button" class="badge" data-badge data-acc="metaphor" aria-describedby="acc-note">
+      <span class="dot"></span><span data-badge-label>Metaphor</span>
+    </button>
+    <p class="acc-note" id="acc-note" role="note" data-acc-note>No tested physics describes this era; this is an artistic metaphor.</p>
+    <p class="mapped" data-mapped hidden>Colour mapped · not visible light</p>
+  </div>
+
+  <div class="strip" data-strip>
+    <div class="track" data-track>
+      <ol class="spine" aria-hidden="true">
+        {dominant.map((d) => (
+          <li style={`--p0:${d.p0};--p1:${d.p1};--c:${d.color}`} title={`${d.era}: ${d.description}`}></li>
+        ))}
+      </ol>
+      <ol class="epochs" aria-hidden="true">
+        {epochs.map((e, i) => (
+          <li style={`--p0:${e.p0};--p1:${e.p1}`} class={i % 2 ? 'odd' : ''}>
+            <span>{e.era}</span>
+          </li>
+        ))}
+      </ol>
+      <ol class="chapters">
+        {chapters.map((c) => (
+          <li style={`--p:${c.p}`}>
+            <button type="button" data-goto={c.p + 0.0004} data-chapter-btn={c.id}>
+              <span class="tick"></span><span class="label">{c.title}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <ol class="events">
+        {evs.map((e) => (
+          <li style={`--p:${e.p};--p0:${e.pMin};--p1:${e.pMax};--c:${e.color}`}>
+            <span class="range" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="ev"
+              data-goto={e.p}
+              data-event={e.id}
+              aria-label={`${e.name}, ${e.label}. ${e.certainty}.`}
+              aria-describedby={`tip-${e.id}`}
+            >
+              <span class="pip"></span>
+            </button>
+            <div class="tip" role="tooltip" id={`tip-${e.id}`}>
+              <p class="tip-cat">{e.category}</p>
+              <p class="tip-name">{e.name}</p>
+              <p class="tip-when">{e.label}{e.range && <span class="tip-range"> · range {e.range}</span>}</p>
+              <p class="tip-sum">{e.summary}</p>
+              <p class="tip-cert">{e.certainty}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div class="marker" data-marker aria-hidden="true"><span></span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <details class="legend">
+      <summary>Key</summary>
+      <ul>
+        {CATEGORIES.map((c) => (
+          <li style={`--c:var(${CATEGORY_VAR[c]})`}><span class="sw"></span>{c}</li>
+        ))}
+      </ul>
+      <ul class="acc-legend">
+        {(Object.keys(ACCURACY_LABEL) as (keyof typeof ACCURACY_LABEL)[]).map((k) => (
+          <li data-acc={k}><span class="sw"></span><b>{ACCURACY_LABEL[k]}</b> {ACCURACY_HELP[k]}</li>
+        ))}
+      </ul>
+    </details>
+    <label class="quality">
+      <span class="sr-only">Rendering quality</span>
+      <select data-quality>
+        <option value="auto">Auto</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+      <span class="q-status" data-quality-status aria-live="off"></span>
+    </label>
+  </div>
+  <p class="sr-only" aria-live="polite" data-live></p>
+</nav>
+
+<script>
+  import { initTimelineNav } from './timelineNav.ts';
+  initTimelineNav(document.querySelector('[data-rail]')!);
+</script>
+
+<style>
+  .rail {
+    position: fixed;
+    z-index: 30;
+    right: 0.75rem;
+    top: 0.75rem;
+    bottom: 0.75rem;
+    width: var(--rail-w);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--color-fog);
+    pointer-events: none;
+  }
+  .rail > * {
+    pointer-events: auto;
+  }
+  .readout {
+    background: var(--color-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+    padding: 0.75rem 0.85rem 0.8rem;
+  }
+  .when {
+    font-size: 1.05rem;
+    color: var(--color-paper);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+  .chapter {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    font-style: italic;
+    color: var(--color-fog);
+    margin-top: 0.2rem;
+  }
+  .phys {
+    color: var(--color-mute);
+    margin-top: 0.35rem;
+    font-variant-numeric: tabular-nums;
+    min-height: 1em;
+  }
+  .badge {
+    margin-top: 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem 0.15rem 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.62rem;
+    color: var(--color-paper);
+    cursor: help;
+    background: transparent;
+  }
+  .badge .dot,
+  .acc-legend .sw {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--acc);
+    box-shadow: 0 0 8px var(--acc);
+  }
+  [data-acc='measured'] {
+    --acc: var(--color-acc-measured);
+  }
+  [data-acc='simulated'] {
+    --acc: var(--color-acc-simulated);
+  }
+  [data-acc='modelled'] {
+    --acc: var(--color-acc-modelled);
+  }
+  [data-acc='metaphor'] {
+    --acc: var(--color-acc-metaphor);
+  }
+  .acc-note {
+    margin-top: 0.45rem;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--color-mute);
+  }
+  .mapped {
+    margin-top: 0.4rem;
+    color: var(--color-glow);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .strip {
+    position: relative;
+    min-height: 0;
+  }
+  .track {
+    position: absolute;
+    inset: 0;
+  }
+  .spine {
+    position: absolute;
+    right: 0.6rem;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--color-line);
+    border-radius: 2px;
+  }
+  .spine li {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--p0) * 100%);
+    height: calc((var(--p1) - var(--p0)) * 100%);
+    background: var(--c);
+    opacity: 0.7;
+    border-radius: 2px;
+  }
+  .epochs li {
+    position: absolute;
+    right: 1.35rem;
+    width: 2px;
+    top: calc(var(--p0) * 100%);
+    height: calc((var(--p1) - var(--p0)) * 100%);
+    background: var(--color-line-strong);
+    opacity: 0.45;
+  }
+  .epochs li.odd {
+    opacity: 0.2;
+  }
+  .epochs span {
+    display: none;
+  }
+  .chapters li {
+    position: absolute;
+    right: 1.7rem;
+    top: calc(var(--p) * 100%);
+    transform: translateY(-50%);
+  }
+  .chapters button {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-direction: row-reverse;
+    color: var(--color-mute);
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 0.1rem 0;
+    font: inherit;
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .chapters .tick {
+    width: 0.55rem;
+    height: 1px;
+    background: var(--color-line-strong);
+  }
+  .chapters button:hover,
+  .chapters button:focus-visible,
+  .chapters button[aria-current='true'] {
+    color: var(--color-paper);
+  }
+  .chapters button[aria-current='true'] .tick {
+    background: var(--color-paper);
+    width: 0.9rem;
+  }
+  .events li {
+    position: absolute;
+    right: 0.1rem;
+    top: calc(var(--p) * 100%);
+    transform: translateY(-50%);
+  }
+  .events .range {
+    position: absolute;
+    right: 0.5rem;
+    width: 7px;
+    top: calc((var(--p0) - var(--p)) * 100cqh + 0.625rem);
+    height: max(2px, calc((var(--p1) - var(--p0)) * 100cqh));
+    border-radius: 4px;
+    background: var(--c);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .ev {
+    display: grid;
+    place-items: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+  .pip {
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 0 0 0 2px rgb(2 2 5 / 0.85);
+    transition: transform 0.2s var(--ease-cosmic);
+  }
+  .ev:hover .pip,
+  .ev:focus-visible .pip {
+    transform: scale(1.7);
+  }
+  .tip {
+    position: absolute;
+    right: 1.9rem;
+    top: 50%;
+    transform: translate(0.4rem, -50%);
+    width: 16rem;
+    padding: 0.65rem 0.75rem;
+    background: rgb(8 10 20 / 0.94);
+    border: 1px solid var(--color-line);
+    border-left: 2px solid var(--c);
+    border-radius: 0.6rem;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-fog);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.18s,
+      transform 0.18s var(--ease-cosmic),
+      visibility 0s 0.18s;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .events li:hover .tip,
+  .ev:focus-visible + .tip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(0, -50%);
+    transition:
+      opacity 0.18s,
+      transform 0.18s var(--ease-cosmic),
+      visibility 0s;
+  }
+  .events li:hover .range,
+  .events li:focus-within .range {
+    opacity: 0.35;
+  }
+  .tip-cat {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--c);
+  }
+  .tip-name {
+    font-family: var(--font-serif);
+    font-size: 0.98rem;
+    color: var(--color-paper);
+    margin-top: 0.1rem;
+  }
+  .tip-when {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--color-glow);
+    margin-top: 0.15rem;
+  }
+  .tip-range {
+    color: var(--color-mute);
+  }
+  .tip-sum {
+    margin-top: 0.35rem;
+  }
+  .tip-cert {
+    margin-top: 0.35rem;
+    font-size: 0.66rem;
+    color: var(--color-mute);
+  }
+  .marker {
+    position: absolute;
+    right: 0;
+    width: 2.4rem;
+    top: 0;
+    height: 0;
+    transform: translateY(calc(var(--mp, 0) * (100cqh)));
+    will-change: transform;
+  }
+  .strip {
+    container-type: size;
+  }
+  .marker span {
+    position: absolute;
+    right: 0;
+    left: 0;
+    top: -1px;
+    height: 2px;
+    background: var(--color-paper);
+    box-shadow: 0 0 10px rgb(255 255 255 / 0.8);
+    border-radius: 2px;
+  }
+  .marker span::after {
+    content: '';
+    position: absolute;
+    right: 0.45rem;
+    top: -4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--color-paper);
+    background: var(--color-void);
+  }
+
+  .controls {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .legend summary,
+  .quality select {
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.65rem;
+    color: var(--color-fog);
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.55rem;
+    list-style: none;
+  }
+  .legend[open] ul {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 2.6rem;
+    width: 17rem;
+    background: rgb(8 10 20 / 0.95);
+    border: 1px solid var(--color-line);
+    border-radius: 0.6rem;
+    padding: 0.6rem 0.7rem;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    display: grid;
+    gap: 0.3rem;
+  }
+  .legend[open] ul.acc-legend {
+    bottom: 12rem;
+  }
+  .legend li {
+    display: flex;
+    gap: 0.45rem;
+    align-items: baseline;
+  }
+  .legend .sw {
+    flex: none;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--c, var(--acc));
+  }
+  .quality {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+  }
+  .q-status {
+    color: var(--color-mute);
+    font-size: 0.58rem;
+  }
+
+  /* Mobile: horizontal strip along the top. */
+  @media (max-width: 767px) {
+    .rail {
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: auto;
+      width: auto;
+      grid-template-rows: auto auto;
+      grid-template-columns: 1fr;
+      gap: 0;
+      background: linear-gradient(rgb(2 2 5 / 0.92), rgb(2 2 5 / 0.6));
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-line);
+    }
+    .readout {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 0.6rem;
+      background: none;
+      border: 0;
+      backdrop-filter: none;
+      padding: 0.45rem 0.75rem 0.2rem;
+    }
+    .when {
+      font-size: 0.85rem;
+    }
+    .chapter {
+      margin: 0;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .badge {
+      margin: 0;
+    }
+    .phys,
+    .acc-note,
+    .mapped,
+    .controls {
+      display: none;
+    }
+    .strip {
+      height: 2.6rem;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      container-type: normal;
+    }
+    .strip::-webkit-scrollbar {
+      display: none;
+    }
+    .track {
+      position: relative;
+      inset: auto;
+      width: 520vw;
+      height: 100%;
+      margin: 0 50vw;
+    }
+    .spine {
+      top: auto;
+      bottom: 0.45rem;
+      left: 0;
+      right: 0;
+      width: auto;
+      height: 3px;
+    }
+    .spine li {
+      top: 0;
+      bottom: 0;
+      height: auto;
+      left: calc(var(--p0) * 100%);
+      width: calc((var(--p1) - var(--p0)) * 100%);
+    }
+    .epochs {
+      display: none;
+    }
+    .chapters li {
+      right: auto;
+      top: 0.2rem;
+      left: calc(var(--p) * 100%);
+      transform: none;
+    }
+    .chapters button {
+      flex-direction: row;
+    }
+    .chapters .tick {
+      width: 1px;
+      height: 0.6rem;
+    }
+    .events li {
+      right: auto;
+      top: auto;
+      bottom: 0.05rem;
+      left: calc(var(--p) * 100%);
+      transform: translateX(-50%);
+    }
+    .events .range,
+    .tip {
+      display: none;
+    }
+    .marker {
+      top: 0;
+      bottom: 0;
+      right: auto;
+      left: 0;
+      width: 0;
+      height: auto;
+      transform: translateX(calc(var(--mp, 0) * 520vw));
+    }
+    .marker span {
+      left: -1px;
+      right: auto;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      height: auto;
+    }
+    .marker span::after {
+      right: auto;
+      left: -4px;
+      top: auto;
+      bottom: 0.2rem;
+    }
+  }
+</style>

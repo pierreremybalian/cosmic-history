@@ -1,0 +1,13 @@
+# Offline data pipeline for Cosmic History (scripts/cmb_to_equirect.py, scripts/tng_to_points.py).
+# Tested with CPython 3.14.7 (Homebrew, /opt/homebrew/bin/python3.14) on macOS arm64:
+#   python3 -m venv scripts/.venv
+#   scripts/.venv/bin/pip install -r scripts/requirements.txt
+#
+# CMB (cmb_to_equirect.py)
+healpy==1.20.1
+numpy==2.5.4
+astropy==8.0.2
+pillow==13.0.0
+# TNG (tng_to_points.py) — only needed if you build the optional TNG point clouds
+h5py==3.16.0
+requests==2.34.2

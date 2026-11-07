@@ -104,10 +104,12 @@ describe('progress ↔ time', () => {
     expect(where('higgs')).toBe('qgp');
     expect(where('confinement')).toBe('hadrons');
     expect(where('ee-annihilation')).toBe('leptons');
-    expect(where('recombination')).toBe('photon');
+    expect(where('recombination')).toBe('recombination');
+    expect(where('matter-domination')).toBe('photon');
     expect(where('first-stars')).toBe('firstStars');
     expect(where('sun-forms')).toBe('solarSystem');
-    expect(where('dinosaurs-extinct')).toBe('life');
-    expect(where('homo-sapiens')).toBe('life');
+    expect(where('great-oxidation')).toBe('life');
+    expect(where('dinosaurs-extinct')).toBe('complexLife');
+    expect(where('homo-sapiens')).toBe('complexLife');
   });
 });

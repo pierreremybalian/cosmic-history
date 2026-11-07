@@ -1,0 +1,99 @@
+---
+// Fixed, full-screen canvas. Boots once and never remounts (transition:persist). HANDOFF §3, §10.
+import { CHAPTERS } from '../time/chapters.ts';
+---
+
+<div id="cosmos" class="cosmos" transition:persist aria-hidden="true">
+  <canvas id="cosmos-canvas"></canvas>
+  <div class="stills" data-stills>
+    {CHAPTERS.map((c) => <div class="still" data-still={c.id}></div>)}
+  </div>
+  <div class="veil"></div>
+</div>
+
+<script>
+  import { createEngine } from './renderer.ts';
+  import { $chapterId, $rendererStatus } from '../state/store.ts';
+
+  const root = document.getElementById('cosmos')!;
+  const canvas = document.getElementById('cosmos-canvas') as HTMLCanvasElement;
+
+  // Static stills follow the chapter when there is no GPU (or before the renderer is ready).
+  const stills = root.querySelectorAll<HTMLElement>('[data-still]');
+  $chapterId.subscribe((id) => {
+    stills.forEach((s) => s.classList.toggle('is-on', s.dataset.still === id));
+  });
+  $rendererStatus.subscribe((s) => {
+    root.setAttribute('data-status', s);
+    // Stills are only fetched when they are needed.
+    if (s === 'fallback' || s === 'error')
+      stills.forEach((el) => (el.style.backgroundImage = `url(/stills/${el.dataset.still}.webp)`));
+  });
+
+  createEngine({ canvas })
+    .then((engine) => {
+      (window as unknown as { __engine?: unknown }).__engine = engine;
+    })
+    .catch((err) => {
+      console.error('[renderer] boot failed', err);
+      $rendererStatus.set('error');
+    });
+</script>
+
+<style>
+  .cosmos {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background: #000;
+    pointer-events: none;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+  }
+  .cosmos[data-status='ready'] canvas {
+    opacity: 1;
+  }
+  .stills {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .cosmos[data-status='fallback'] .stills,
+  .cosmos[data-status='error'] .stills {
+    opacity: 1;
+  }
+  .cosmos[data-status='fallback'] canvas,
+  .cosmos[data-status='error'] canvas {
+    display: none;
+  }
+  .still {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 0.9s ease;
+  }
+  .still.is-on {
+    opacity: 1;
+  }
+  /* Readability: a soft shade behind the narrative column on wide screens. */
+  .veil {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgb(2 2 5 / 0.55) 0%, rgb(2 2 5 / 0.22) 34%, rgb(2 2 5 / 0) 52%);
+  }
+  @media (max-width: 767px) {
+    .veil {
+      background: linear-gradient(0deg, rgb(2 2 5 / 0.7) 0%, rgb(2 2 5 / 0.15) 45%, rgb(2 2 5 / 0) 60%);
+    }
+  }
+</style>

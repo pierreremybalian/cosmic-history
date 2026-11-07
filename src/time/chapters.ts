@@ -48,15 +48,19 @@ const ROWS: Row[] = [
   ['qgp', 'qgp', 1e-32, 1e-6, 'log', 8, 'dissolve'],
   ['hadrons', 'hadrons', 1e-6, 1, 'log', 6, 'zoom'],
   ['leptons', 'leptons', 1, 180, 'log', 4, 'dissolve'],
-  ['bbn', 'bbn', 180, 1200, 'linear', 5, 'zoom'],
-  ['photon', 'recombination', 1200, 380 * KYR_S, 'log', 9, 'dissolve'],
+  ['bbn', 'bbn', 180, 1200, 'log', 5, 'zoom'],
+  // The photon era is split so recombination (z ≈ 1400 → 1000) gets real scroll; both show one scene.
+  ['photon', 'recombination', 1200, 250 * KYR_S, 'log', 6, 'dissolve'],
+  ['recombination', 'recombination', 250 * KYR_S, 380 * KYR_S, 'linear', 6, 'dissolve'],
   ['darkAges', 'darkAges', 380 * KYR_S, 150 * MYR_S, 'log', 7, 'dissolve'],
   ['firstStars', 'firstStars', 150 * MYR_S, 500 * MYR_S, 'linear', 7, 'zoom'],
   ['reionization', 'reionization', 500 * MYR_S, 1 * GYR_S, 'linear', 5, 'dissolve'],
   ['cosmicNoon', 'cosmicNoon', 1 * GYR_S, 7.8 * GYR_S, 'linear', 7, 'dissolve'],
   ['darkEnergy', 'darkEnergy', 7.8 * GYR_S, ago(4.6 * GYR_S), 'linear', 4, 'stretch'],
   ['solarSystem', 'solarSystem', ago(4.6 * GYR_S), ago(4.4 * GYR_S), 'lookback', 6, 'zoom'],
-  ['life', 'life', ago(4.4 * GYR_S), ago(10 * KYR_S), 'lookback', 10, 'dissolve'],
+  // Life is split so the first 3.9 Gyr (oceans → eukaryotes) are not squeezed by the log lookback map.
+  ['life', 'life', ago(4.4 * GYR_S), ago(540 * MYR_S), 'linear', 6, 'dissolve'],
+  ['complexLife', 'life', ago(540 * MYR_S), ago(10 * KYR_S), 'lookback', 7, 'dissolve'],
   ['now', 'now', ago(10 * KYR_S), ago(0), 'lookback', 3, 'zoom'],
 ];
 

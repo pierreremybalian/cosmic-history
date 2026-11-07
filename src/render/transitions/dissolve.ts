@@ -1,6 +1,6 @@
 // Noise-thresholded crossfade (HANDOFF §10.4).
-import { float, mix, mx_noise_float, smoothstep, vec3, type TextureNode } from 'three/tsl';
-import type { Node } from 'three/webgpu';
+import { float, mix, mx_noise_float, smoothstep, vec3 } from 'three/tsl';
+import type { Node, TextureNode } from 'three/webgpu';
 
 export function dissolve(a: TextureNode, b: TextureNode, uv: Node<'vec2'>, t: Node<'float'>, time: Node<'float'>, aspect: Node<'float'>) {
   const n = mx_noise_float(vec3(uv.x.mul(aspect).mul(3.0), uv.y.mul(3.0), time.mul(0.05))).mul(0.5).add(0.5);

@@ -1,0 +1,225 @@
+---
+// On-canvas HTML overlays (not canvas text): BBN gauge, CMB colour bar, star-formation curve, energy budget.
+// Values come straight from src/physics so the HUD and the scenes can never disagree.
+import { CMB_STOPS } from '../shared/color.ts';
+const cmbGradient = `linear-gradient(90deg, ${CMB_STOPS.map(([t, c]) => `${c} ${((t + 1) / 2) * 100}%`).join(', ')})`;
+---
+
+<div class="hud" aria-hidden="true">
+  <section class="card bbn" data-hud="bbn">
+    <h3>Mass fractions</h3>
+    <ul>
+      <li data-el="protons"><span class="nm">H¹</span><span class="bar"><i></i></span><span class="v"></span></li>
+      <li data-el="neutrons"><span class="nm">n</span><span class="bar"><i></i></span><span class="v"></span></li>
+      <li data-el="deuterium"><span class="nm">H²</span><span class="bar log"><i></i></span><span class="v"></span></li>
+      <li data-el="helium4"><span class="nm">He⁴</span><span class="bar"><i></i></span><span class="v"></span></li>
+      <li data-el="lithium7"><span class="nm">Li⁷</span><span class="bar log"><i></i></span><span class="v"></span></li>
+    </ul>
+    <p class="foot">D and Li on a log scale · Yₚ → 0.247</p>
+  </section>
+
+  <section class="card cmb" data-hud="cmb">
+    <h3>Temperature fluctuations · colour mapped</h3>
+    <div class="cbar" style={`background:${cmbGradient}`}></div>
+    <div class="ticks"><span>−300 µK</span><span>0</span><span>+300 µK</span></div>
+    <p class="foot">Planck 2018 SMICA map · ESA / Planck Collaboration</p>
+  </section>
+
+  <section class="card sfr" data-hud="sfr">
+    <h3>Cosmic star-formation rate</h3>
+    <svg viewBox="0 0 200 80" preserveAspectRatio="none" data-sfr-svg>
+      <path class="curve" data-sfr-path d=""></path>
+      <line class="now" data-sfr-now x1="0" x2="0" y1="0" y2="80"></line>
+    </svg>
+    <div class="ticks"><span>Big Bang</span><span data-sfr-peak>peak ~3.5 Gyr</span><span>now</span></div>
+    <p class="foot">Madau &amp; Dickinson 2014 fit · M☉ yr⁻¹ Mpc⁻³</p>
+  </section>
+
+  <section class="card omega" data-hud="omega">
+    <h3>Energy budget</h3>
+    <div class="stack">
+      <i data-om="radiation" style="--c: var(--color-glow)"></i>
+      <i data-om="baryon" style="--c: var(--color-paper)"></i>
+      <i data-om="darkMatter" style="--c: var(--cat-structure)"></i>
+      <i data-om="darkEnergy" style="--c: var(--cat-dark)"></i>
+    </div>
+    <ul class="om-legend">
+      <li style="--c: var(--color-paper)">Ordinary matter <b data-omv="baryon"></b></li>
+      <li style="--c: var(--cat-structure)">Dark matter <b data-omv="darkMatter"></b></li>
+      <li style="--c: var(--cat-dark)">Dark energy <b data-omv="darkEnergy"></b></li>
+      <li style="--c: var(--color-glow)">Radiation <b data-omv="radiation"></b></li>
+    </ul>
+  </section>
+</div>
+
+<script>
+  import { initHud } from './hud.ts';
+  initHud(document.querySelector('.hud')!);
+</script>
+
+<style>
+  .hud {
+    position: fixed;
+    z-index: 20;
+    right: calc(var(--rail-w) + 1.75rem);
+    bottom: 1.25rem;
+    display: grid;
+    gap: 0.75rem;
+    justify-items: end;
+    pointer-events: none;
+    font-family: var(--font-mono);
+  }
+  .card {
+    width: 16.5rem;
+    padding: 0.7rem 0.85rem 0.75rem;
+    background: var(--color-panel);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--color-line);
+    border-radius: 0.75rem;
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+      opacity 0.5s var(--ease-cosmic),
+      transform 0.5s var(--ease-cosmic);
+    display: none;
+  }
+  .card.is-on {
+    display: block;
+  }
+  .card.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  h3 {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-mute);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+  .foot {
+    margin-top: 0.45rem;
+    font-size: 0.58rem;
+    color: var(--color-mute);
+  }
+  .bbn ul {
+    display: grid;
+    gap: 0.3rem;
+  }
+  .bbn li {
+    display: grid;
+    grid-template-columns: 2rem 1fr 3.6rem;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+  }
+  .bbn .nm {
+    color: var(--color-paper);
+  }
+  .bbn .bar {
+    height: 6px;
+    background: rgb(255 255 255 / 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bbn .bar i {
+    display: block;
+    height: 100%;
+    width: calc(var(--w, 0) * 100%);
+    background: var(--color-cat-elements);
+    border-radius: 3px;
+  }
+  .bbn .bar.log i {
+    background: var(--color-signal);
+  }
+  .bbn .v {
+    text-align: right;
+    color: var(--color-fog);
+    font-variant-numeric: tabular-nums;
+  }
+  .cbar {
+    height: 10px;
+    border-radius: 3px;
+  }
+  .ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.3rem;
+    font-size: 0.58rem;
+    color: var(--color-mute);
+  }
+  .sfr svg {
+    width: 100%;
+    height: 4.5rem;
+    overflow: visible;
+  }
+  .sfr .curve {
+    fill: rgb(255 196 107 / 0.12);
+    stroke: var(--color-cat-elements);
+    stroke-width: 1.2;
+    vector-effect: non-scaling-stroke;
+  }
+  .sfr .now {
+    stroke: var(--color-paper);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+  .stack {
+    display: flex;
+    height: 12px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgb(255 255 255 / 0.05);
+  }
+  .stack i {
+    display: block;
+    height: 100%;
+    width: calc(var(--w, 0) * 100%);
+    background: var(--c);
+    transition: width 0.15s linear;
+  }
+  .om-legend {
+    margin-top: 0.5rem;
+    display: grid;
+    gap: 0.2rem;
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+  }
+  .om-legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .om-legend li::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 2px;
+    background: var(--c);
+  }
+  .om-legend b {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-weight: 400;
+    color: var(--color-paper);
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 767px) {
+    .hud {
+      right: 0.75rem;
+      left: 0.75rem;
+      top: 6.2rem;
+      bottom: auto;
+      justify-items: stretch;
+    }
+    .card {
+      width: auto;
+      padding: 0.5rem 0.7rem;
+    }
+    .foot {
+      display: none;
+    }
+  }
+</style>

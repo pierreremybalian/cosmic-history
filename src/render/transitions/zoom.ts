@@ -1,6 +1,6 @@
 // Incoming scales up from the centre while the outgoing frame gets a radial blur (HANDOFF §10.4).
-import { float, mix, smoothstep, step, vec2, vec4, type TextureNode } from 'three/tsl';
-import type { Node } from 'three/webgpu';
+import { float, mix, smoothstep, step, vec2, vec4 } from 'three/tsl';
+import type { Node, TextureNode } from 'three/webgpu';
 
 const TAPS = 10;
 

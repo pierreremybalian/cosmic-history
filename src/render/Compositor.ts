@@ -22,6 +22,7 @@ export const POST = {
 
 export class Compositor {
   private readonly blank: DataTexture;
+  private readonly blankA: DataTexture;
   private readonly texA;
   private readonly texB;
   private readonly uMix = uniform(0);
@@ -36,9 +37,13 @@ export class Compositor {
     private readonly renderer: WebGPURenderer,
     globals: GlobalUniforms,
   ) {
+    // Two distinct placeholder textures: if both nodes start on the same texture, three shares the binding and
+    // later value swaps are ignored (found the hard way: black frames).
     this.blank = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, RGBAFormat);
     this.blank.needsUpdate = true;
-    this.texA = texture(this.blank);
+    this.blankA = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, RGBAFormat);
+    this.blankA.needsUpdate = true;
+    this.texA = texture(this.blankA);
     this.texB = texture(this.blank);
     const { texA, texB, uMix, uKind, uAspect, uFade, uGrain } = this;
     const time = globals.uElapsed;
@@ -72,7 +77,8 @@ export class Compositor {
       const d = p.sub(0.5).mul(vec2(uAspect, 1)).length();
       c.mulAssign(float(1).sub(d.mul(d).mul(POST.vignette)));
       // Film grain: luminance-weighted so blacks stay black.
-      const g = hash(p.mul(globals.uResolution).add(time.mul(60.0).floor().mul(7.13))).sub(0.5);
+      const px = p.mul(globals.uResolution).floor();
+      const g = hash(px.x.add(px.y.mul(1031.0)).add(time.mul(60.0).floor().mul(7919.0))).sub(0.5);
       const l = luminance(c).add(0.02).sqrt();
       c.addAssign(vec3(g.mul(uGrain).mul(l)));
       return vec4(c.max(0), 1);
@@ -94,7 +100,7 @@ export class Compositor {
    */
   render(incoming: Texture | null, outgoing: Texture | null, mixT: number, kind: TransitionKind | 'none' | 'fade', fade = 1): void {
     this.texB.value = incoming ?? this.blank;
-    this.texA.value = outgoing ?? this.blank;
+    this.texA.value = outgoing ?? this.blankA;
     this.uMix.value = mixT;
     this.uKind.value = outgoing ? KIND[kind] : 0;
     this.uFade.value = fade;
@@ -106,5 +112,6 @@ export class Compositor {
     this.pipeline.dispose();
     this.bloomNode.dispose();
     this.blank.dispose();
+    this.blankA.dispose();
   }
 }

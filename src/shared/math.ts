@@ -48,7 +48,8 @@ export const saturateRemap = (x: Node<'float'>, a: number, b: number) => tslClam
 
 /** Rotation matrix about Y (TSL). */
 export function rotY(angle: Node<'float'> | number) {
-  const c = cos(float(angle));
-  const s = sin(float(angle));
+  const a = typeof angle === 'number' ? float(angle) : angle;
+  const c = cos(a);
+  const s = sin(a);
   return mat3(vec3(c, 0, s.negate()), vec3(0, 1, 0), vec3(s, 0, c));
 }
