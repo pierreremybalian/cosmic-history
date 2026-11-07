@@ -74,7 +74,7 @@ export const params = {
   clear1: 0.3,
   /** Glow brightness: intensity = intensityEnd · (T / tEndK)^intensityPower (∝ T⁴ in reality; compressed). */
   intensityEnd: 0.5,
-  intensityPower: 0.09,
+  intensityPower: 0.2,
   /** Fluctuation look (exaggerated, see note). Contrast: strong while the structure is fine (early), gentler as it grows and as the map takes over. */
   contrast: [2.6, 1.8] as const,
   saturate: 1.4,
@@ -82,12 +82,19 @@ export const params = {
   densVarBase: 0.35,
   densVarThin: 0.95,
   /** Primordial field box size, world units: grows over the photon era (structures grow). */
-  boxEarly: 3.5,
+  boxEarly: 6,
   boxLate: 26,
-  /** Fine directional mottle (granular plasma look), replaced by the Planck pattern as it rises. */
-  mottleAmp: 0.5,
-  mottleFreqEarly: 22,
-  mottleFreqLate: 10,
+  /** Plasma era (fades as the Planck pattern rises): stream speed (world units/s), elongation along the stream,
+   *  fine-scale weight, incandescent sheets, warp, contrast, ringing rates (cycles per wave-clock unit). */
+  streamSpeed: [0.12, 0.42] as const,
+  stretch: 2.2,
+  fineAmp: 0.75,
+  ridge: 0.9,
+  warp: 0.15,
+  plasmaContrast: 1.35,
+  plasmaVar: 0.9,
+  ringMid: 1.4,
+  ringFine: 3.1,
   driftSpeed: [0.0021, 0.0013, -0.0017] as const,
   /** Planck pattern in the fog: weight ramps between these times (kyr); blur in the fog (radians). */
   cmbFromKyr: 55,
@@ -111,7 +118,7 @@ export const params = {
   /** Camera. */
   fovFog: 62,
   fovEnd: 48,
-  yawStart: 0.85,
+  yawStart: 0.5,
   swayAmp: 0.05,
   driftAmp: 0.22,
   pullStart: 0.68,
@@ -137,21 +144,20 @@ export const params = {
   glintCount: { low: 1200, medium: 2500, high: 5000 },
   glintShell: [1.2, 16] as const,
   glintSize: 0.06,
-  /** Plasma motes (nuclei and electrons as faint specks): count, ball radius, size, brightness, inflow speed. */
+  /** Plasma motes (nuclei and electrons as faint specks; they ride the same stream): count, ball radius, size, gain. */
   moteCount: { low: 15000, medium: 40000, high: 70000 },
   moteRadius: 5,
   moteSize: 0.022,
   moteGain: 2.2,
-  moteFlow: 0.12,
   /** Photon random walk: count, shell, speed (world units/s), step = mean free path × this. */
-  photonCount: { low: 160, medium: 240, high: 360 },
+  photonCount: { low: 60, medium: 100, high: 150 },
   photonTrail: 2,
   photonShell: [1.4, 5.5] as const,
   photonSpeed: 1.5,
-  photonStep: 0.5,
+  photonStep: 0.32,
   photonStepFree: 1.4,
-  photonWidth: 0.035,
-  photonGain: 5,
+  photonWidth: 0.02,
+  photonGain: 2.6,
 };
 
 const FOG_NOTE =
@@ -221,7 +227,7 @@ export default (): CosmicScene => {
   let motes: Sprite;
   let moteMat: SpriteNodeMaterial;
   let moteClock = 0;
-  let flow = 0;
+  let stream = 0;
   let photonClock = 0;
   const rgb: [number, number, number] = [0, 0, 0];
   let waveClock = 0;
@@ -250,6 +256,7 @@ export default (): CosmicScene => {
         {
           lut: ctx.globals.lut,
           field: ctx.field.textures().density,
+          disp: ctx.field.textures().displacement,
           cmb: cmb.texture,
           convention: cmb.convention,
           radius: params.radius,
@@ -346,7 +353,10 @@ export default (): CosmicScene => {
       su.cmbGain.value = P.cmbGain;
       su.cmbFogGain.value = P.cmbFogGain;
       su.mapGain.value = P.mapGain;
-      su.contrast.value = lerp(P.contrast[0], P.contrast[1], smoothstep(0.05, 0.6, sPh));
+      const cmbRise = smoothstep(LOG_CMB0, LOG_CMB1, logt);
+      const contrast = lerp(P.contrast[1], P.plasmaContrast, 1 - cmbRise);
+      su.contrast.value = contrast;
+      su.norm.value = 0.5 * contrast * contrast * P.plasmaVar;
       su.tempVar.value = P.tempVar;
       su.saturate.value = P.saturate;
 
@@ -357,9 +367,16 @@ export default (): CosmicScene => {
       su.eclX.value.copy(ECL_X);
       su.eclY.value.copy(ECL_Y);
       su.sweepStart.value = LAMBDA_GC - P.sweepLead * DEG;
-      su.mottle.value = P.mottleAmp * (1 - cmbW) * (1 - clear);
-      su.mottleFreq.value = P.mottleFreqEarly * Math.pow(P.mottleFreqLate / P.mottleFreqEarly, sPh);
-      su.mottleTime.value = elapsed * 0.02;
+      // Plasma look: true emission–absorption, streaming, stretched, ringing; hands over to the averaged
+      // recombination look as the Planck pattern rises (55 → 300 kyr).
+      const plasma = 1 - cmbW;
+      su.plasma.value = plasma;
+      su.stretch.value = lerp(1, P.stretch, plasma);
+      su.fineAmp.value = P.fineAmp;
+      su.ridge.value = P.ridge * plasma;
+      su.warp.value = P.warp;
+      stream += dt * lerp(P.streamSpeed[0], P.streamSpeed[1], plasma) * (1 - clear);
+      su.flowZ.value = stream;
       su.blur.value = P.blurFog * Math.pow(1 - clear, 1.5) + P.blurMin;
       const box = P.boxEarly * Math.pow(P.boxLate / P.boxEarly, sPh);
       su.freq.value = 1 / box;
@@ -369,6 +386,9 @@ export default (): CosmicScene => {
       // Sound speed collapses as photons decouple from baryons: shells slow and freeze.
       waveClock += dt * P.waveRate * xe * xe * (1 - clear);
       su.waveClock.value = waveClock;
+      const phM = waveClock * P.ringMid * Math.PI * 2;
+      const phF = waveClock * P.ringFine * Math.PI * 2;
+      su.osc.value.set(Math.cos(phM), Math.sin(phM), Math.cos(phF), Math.sin(phF));
       su.waveAmp.value = P.waveGain * (0.2 + 0.8 * smoothstep(0.45, 0.7, sPh)) * (1 - 0.6 * smoothstep(0.85, 1, sPh)) * (1 - smoothstep(0.1, 0.5, uRec));
       su.waveR.value = P.waveRadius * (0.55 + 0.45 * grow);
       su.waveW.value = P.waveWidth * (0.6 + 0.4 * grow);
@@ -401,9 +421,8 @@ export default (): CosmicScene => {
 
       // Motes: blackbody colour, fade as the fog clears (atoms are neutral) and stream slowly past.
       moteClock += dt;
-      flow += dt * P.moteFlow * (1 - clear);
       mu.clock.value = moteClock;
-      mu.flow.value = flow;
+      mu.flow.value = stream;
       mu.sigma.value = sigma;
       mu.size.value = P.moteSize;
       mu.waveClock.value = waveClock;

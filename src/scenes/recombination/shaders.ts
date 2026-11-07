@@ -14,6 +14,7 @@ import {
   MeshBasicNodeMaterial,
   SpriteNodeMaterial,
   Vector3,
+  Vector4,
   type Data3DTexture,
   type DataTexture,
   type InstancedBufferAttribute,
@@ -43,7 +44,6 @@ import {
   max,
   min,
   mix,
-  mx_noise_float,
   normalize,
   positionGeometry,
   positionWorld,
@@ -73,8 +73,10 @@ type V3 = Node<'vec3'>;
 
 const _mkF = () => uniform(0);
 const _mkV3 = () => uniform(new Vector3());
+const _mkV4 = () => uniform(new Vector4());
 type FU = ReturnType<typeof _mkF>;
 type V3U = ReturnType<typeof _mkV3>;
+type V4U = ReturnType<typeof _mkV4>;
 
 /** Everything the CPU drives each frame. Values come from src/physics via index.ts (§13.2). */
 export interface SkyUniforms {
@@ -102,10 +104,18 @@ export interface SkyUniforms {
   cmbW: FU;
   /** Angular blur of the Planck pattern, radians (diffusion-damped look in the fog → sharp when clear). */
   blur: FU;
-  /** Fine directional mottle: amplitude, angular frequency, evolution. */
-  mottle: FU;
-  mottleFreq: FU;
-  mottleTime: FU;
+  /** Plasma-era look (1) → recombination-era look (0): integration mode, stream, stretch. */
+  plasma: FU;
+  /** Stream offset along +Z (world units) and elongation of the structure along the stream. */
+  flowZ: FU;
+  stretch: FU;
+  /** Acoustic ringing phases: (cos φ_mid, sin φ_mid, cos φ_fine, sin φ_fine). */
+  osc: V4U;
+  fineAmp: FU;
+  ridge: FU;
+  warp: FU;
+  /** Log-normalisation of the integrated emission (keeps the mean ≈ intensity). */
+  norm: FU;
   /** Primordial field sampling frequency (field boxes per world unit) and drift. */
   freq: FU;
   drift: V3U;
@@ -151,9 +161,14 @@ export function createSkyUniforms(): SkyUniforms {
     noiseW: uniform(1),
     cmbW: uniform(0),
     blur: uniform(0.05),
-    mottle: uniform(1),
-    mottleFreq: uniform(14),
-    mottleTime: uniform(0),
+    plasma: uniform(1),
+    flowZ: uniform(0),
+    stretch: uniform(1.8),
+    osc: uniform(new Vector4(1, 0, 1, 0)),
+    fineAmp: uniform(0.6),
+    ridge: uniform(0.8),
+    warp: uniform(0.08),
+    norm: uniform(0.5),
     freq: uniform(1 / 24),
     drift: uniform(new Vector3()),
     waveClock: uniform(0),
@@ -179,6 +194,8 @@ export function createSkyUniforms(): SkyUniforms {
 export interface SkyOptions {
   lut: DataTexture;
   field: Data3DTexture;
+  /** Shared field displacement ψ (RGBA16F, xyz = ψ/σψ): a smooth vector field for warping and ringing. */
+  disp: Data3DTexture;
   cmb: Texture;
   convention: CmbConvention;
   radius: number;
@@ -252,8 +269,10 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
     };
 
     const T = float(1).toVar();
-    const wSum = float(0).toVar();
-    const dSum = float(0).toVar();
+    const wSum = float(0).toVar(); // opacity seen (Σ a)
+    const dSum = float(0).toVar(); // Σ a·δ   (averaged look, recombination era)
+    const eSum = float(0).toVar(); // Σ a·e   (integrated look, plasma era)
+    const edSum = float(0).toVar(); // Σ a·e·δ (colour-temperature shift of the integrated look)
     const segLen = tExit.sub(tEnter);
     const cmbTerm = dT.mul(u.cmbW).mul(u.cmbFogGain);
 
@@ -264,38 +283,55 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
       Loop(o.steps, ({ i }) => {
         const ts = tEnter.add(float(i).add(jitter).mul(dt));
         const p = ro.add(rd.mul(ts));
-        const q = p.mul(u.freq).add(u.drift);
-        // Smooth multi-scale clouds: inflation's ζ (G) at a large scale for broad bright/dim regions, the smoothed
-        // density (B) at two scales for the cloud body (lightly domain-warped). All from the shared field.
-        const big = texture3D(o.field, q.mul(0.33).add(vec3(0.13, 0.57, 0.29))).level(float(0)).g;
-        const mid = texture3D(o.field, q).level(float(0)).b;
-        const fine = texture3D(o.field, q.mul(2.3).add(vec3(0.31, 0.17, 0.59)).add(mid.mul(0.025))).level(float(0)).b;
-        const n = big.mul(0.35).add(mid.mul(0.75)).add(fine.mul(0.55));
+        // The plasma streams toward the camera (+Z) and is drawn out along the stream, so near layers slide past
+        // with parallax and the structure converges on a vanishing point: radial depth, never a backdrop.
+        const pf = p.sub(vec3(0, 0, u.flowZ));
+        const qa = vec3(pf.x, pf.y, pf.z.div(u.stretch)).mul(u.freq).add(u.drift);
+        // Shared primordial field: ψ (smooth displacement, each component σ ≈ 0.58) gives the broad variation and
+        // warps the finer lookups, so the structure curls like turbulence; smoothed δ (B) at two scales gives the body.
+        const psiA = texture3D(o.disp, qa.mul(0.45)).level(float(0)).xyz;
+        const bm = texture3D(o.field, qa.add(psiA.mul(u.warp))).level(float(0)).b;
+        const bf = texture3D(o.field, qa.mul(2.1).add(psiA.mul(u.warp.mul(2))).add(vec3(0.31, 0.17, 0.59))).level(float(0)).b;
+        // Acoustic ringing: the body oscillates between the two scales' patterns (cos/sin of a phase that runs with
+        // the sound speed and freezes at decoupling), so the texture keeps re-forming like a ringing medium.
+        const nRing = bm.mul(u.osc.x).add(bf.mul(u.osc.y));
+        const n = psiA.x.mul(1.7 * 0.35).add(nRing.mul(0.8)).add(bf.mul(u.fineAmp).mul(0.35));
+        // Thin incandescent sheets where the ringing field crosses zero.
+        const sheet = pow(clamp(float(1).sub(abs(nRing).mul(0.9)), 0, 1), 4);
         // Dark-matter wells: smoothed δ (B), only where it is overdense; photons climbing out look cooler.
-        const dmf = texture3D(o.field, q.mul(o.dmScale).add(vec3(0.5, 0.21, 0.73))).level(float(0)).b;
+        const dmf = texture3D(o.field, qa.mul(o.dmScale).add(vec3(0.5, 0.21, 0.73))).level(float(0)).b;
         const well = smoothstep(0.4, 2.0, dmf);
-        const delta = n.mul(u.noiseW).sub(well.mul(u.dm)).add(cmbTerm);
-        const dens = u.sigma.mul(max(n.mul(u.densVar).add(1), 0.04));
+        const delta = n.add(sheet.mul(u.ridge)).mul(u.noiseW).sub(well.mul(u.dm)).add(cmbTerm);
+        const dens = u.sigma.mul(max(n.add(sheet.mul(u.ridge).mul(1.5)).mul(u.densVar).add(1), 0.04));
         const a = float(1).sub(exp(dens.mul(dt).negate())).mul(T);
+        const e = exp(delta.mul(u.contrast).sub(u.norm));
         wSum.addAssign(a);
         dSum.addAssign(a.mul(delta));
+        eSum.addAssign(a.mul(e));
+        edSum.addAssign(a.mul(e).mul(delta));
         T.subAssign(a);
       });
       // Fog beyond the marched span (only when it is thick): mean density, mean emission.
       const rest = max(segLen.sub(marchLen), 0);
       const aRest = float(1).sub(exp(u.sigma.mul(rest).negate())).mul(T);
+      const eRest = exp(cmbTerm.mul(u.contrast).sub(u.norm));
       wSum.addAssign(aRest);
       dSum.addAssign(aRest.mul(cmbTerm));
+      eSum.addAssign(aRest.mul(eRest));
+      edSum.addAssign(aRest.mul(eRest).mul(cmbTerm));
       T.subAssign(aRest);
     });
 
-    // Emission-weighted fluctuation seen through the fog → one glow evaluation (exact in the opaque and clear
-    // limits; between them it keeps the contrast instead of averaging it away).
-    // Fine granular mottle on the sky directions (anchored to the world, like the final map), slowly evolving.
-    const mp = dirW.mul(u.mottleFreq).add(vec3(0, 0, u.mottleTime));
-    const fineDir = mx_noise_float(mp).mul(0.65).add(mx_noise_float(mp.mul(2.4).add(vec3(3.1, 1.7, 0.4))).mul(0.35));
-    const fogDelta = dSum.div(max(wSum, 1e-4)).add(fineDir.mul(u.mottle));
-    const L = glow(fogDelta).mul(u.intensity).mul(wSum).toVar();
+    const fogDelta = dSum.div(max(wSum, 1e-4));
+    // Plasma era: true emission–absorption along the ray (layers at every depth); recombination era: one glow of
+    // the emission-weighted fluctuation (keeps the anisotropy contrast as the fog thins). Blended by `plasma`.
+    const eMean = eSum.div(max(wSum, 1e-4));
+    const cInt = max(col0.mul(eSum).add(dCol.mul(u.tempVar).mul(edSum)), vec3(0));
+    const lumInt = dot(cInt, vec3(0.2126, 0.7152, 0.0722));
+    const dimInt = float(1).sub(smoothstep(0.2, 1.4, eMean));
+    const integrated = mix(vec3(lumInt), cInt, float(1.15).add(u.saturate.mul(dimInt)));
+    const averaged = glow(fogDelta).mul(wSum);
+    const L = max(mix(averaged, integrated, u.plasma), vec3(0)).mul(u.intensity).toVar();
 
     // ── Acoustic shells, integrated analytically along the ray (no sampling noise). Each overdensity launches a
     // spherical sound wave in the photon–baryon fluid; a thin luminous shell seen through the fog is brightest
@@ -470,7 +506,7 @@ export function createPhotonMaterial(u: PhotonUniforms, seeds: InstancedBufferAt
   const att = varying(exp(u.sigma.mul(depth).negate()).mul(smoothstep(0.6, 1.8, depth)).mul(pow(fade, 2.5)));
   // Soft glowing profile: a thin hot core inside a wide faint halo.
   const yy = uv().y.sub(0.5).mul(2);
-  const prof = exp(yy.mul(yy).mul(-28)).add(exp(yy.mul(yy).mul(-4)).mul(0.18));
+  const prof = exp(yy.mul(yy).mul(-12)).add(exp(yy.mul(yy).mul(-3)).mul(0.25));
   mat.colorNode = u.colour.mul(prof.mul(att).mul(u.amount));
   mat.opacityNode = float(1);
   return mat;

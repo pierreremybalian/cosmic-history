@@ -2,14 +2,15 @@
 //
 // Beats (local; captions in content/chapters/planck.mdx at 0.14, 0.26, 0.42, 0.60, 0.92):
 //   0.00–0.30  churning quantum foam: a raymarched 4D froth of glowing bubble edges, centre-right
-//   0.28–0.48  the foam calms and merges into one bright bubble, the single unified field; a braided ring of
-//              force strands grows around it (all strands one colour)
-//   0.52–0.80  gravity peels away: a dark, lacy absorbing layer lifts off the bubble and drifts outward; the
-//              gravity strands unzip from the braid, drop out of the ring and dim to a dark violet
+//   0.28–0.48  the foam calms and gathers into one bright field: a swirling luminous volume with a white-hot
+//              core grading into the foam, gently breathing; thin force filaments converge from both sides into
+//              one braid through it (all one colour)
+//   0.52–0.80  gravity peels away: a net of dark filaments lifts off the field, one side first, and drifts
+//              outward; the gravity filaments unzip from the braid, drift away and dim to a dark violet
 //   0.83–0.95  the strong force separates: colour-charge flicker (red/green/blue patches cycle over the field)
-//              and the strong strands unzip in colour, leaving the electroweak braid
-//   0.90–1.00  the bubble breaks back into a calm, bright, centred foam patch (handed to inflation by the
-//              'stretch' transition; inflation starts on the same patch and camera, see FOAM_HANDOFF)
+//              and the strong filaments unzip in colour, leaving the electroweak braid
+//   0.90–1.00  everything calms into a bright, centred foam patch (handed to inflation by the 'stretch'
+//              transition; inflation starts on the same patch and camera, see FOAM_HANDOFF)
 
 import { Color, PerspectiveCamera, Scene, Vector3, type Data3DTexture, type RenderTarget, type WebGPURenderer } from 'three/webgpu';
 import { blackbodyRGB } from '../../physics/blackbody.ts';
@@ -53,33 +54,33 @@ const LOOK_OPEN: FoamLook = {
   churn: 0.6,
   exposure: 1,
 };
-/** One bubble: the foam inside fades to a faint, calm glow; the shell itself is driven separately. */
+/** One field: the foam calms (slower churn, rounder cells) and frames the luminous field driven separately. */
 const LOOK_UNIFIED: FoamLook = {
-  radius: 1.3,
-  bound: 2.9,
-  zSquash: 1,
-  cellsWorld: 1.6,
-  warp: 0.15,
+  radius: 2.3,
+  bound: 3.0,
+  zSquash: 1.2,
+  cellsWorld: 1.15,
+  warp: 0.25,
   seedJitter: 0.9,
-  breathe: 0.02,
-  skin: 0.05,
-  skinWidth: 0.2,
-  edge: 0.7,
-  edgeWidth: 0.07,
-  node: 2,
-  haze: 0.1,
-  bubbling: 0.2,
-  edgeSoft: 0.5,
-  core: 0.28,
-  coreRadiusWorld: 0.9,
+  breathe: 0.04,
+  skin: 0.18,
+  skinWidth: 0.18,
+  edge: 4.5,
+  edgeWidth: 0.03,
+  node: 16,
+  haze: 0.2,
+  bubbling: 0.3,
+  edgeSoft: 0.75,
+  core: 0,
+  coreRadiusWorld: 1.0,
   focusGain: 0,
   focusRadius: 0.5,
-  absorb: 0.6,
-  churn: 0.2,
+  absorb: 0.5,
+  churn: 0.22,
   exposure: 1,
 };
-const LOOK_GRAVITY: FoamLook = { ...LOOK_UNIFIED, edge: 1.8, node: 6, churn: 0.3, bubbling: 0.35, breathe: 0.05 };
-const LOOK_STRONG: FoamLook = { ...LOOK_GRAVITY, churn: 0.9, edge: 3, node: 12, warp: 0.25, breathe: 0.1 };
+const LOOK_GRAVITY: FoamLook = { ...LOOK_UNIFIED, churn: 0.3, bubbling: 0.4, breathe: 0.06 };
+const LOOK_STRONG: FoamLook = { ...LOOK_GRAVITY, churn: 0.9, edge: 5.5, node: 22, warp: 0.32, breathe: 0.1 };
 const LOOK_END: FoamLook = { ...FOAM_HANDOFF.look };
 
 export const params = {
@@ -103,13 +104,26 @@ export const params = {
   liftY: 0.1,
   /** Brightest region of the opening foam, in local units of the volume. */
   focusOpen: new Vector3(-0.05, 0.08, 0.25),
-  bubble: { radiusWorld: 1.15, widthWorld: 0.01, gain: 13, corona: 0.7, coronaWorld: 0.28 },
+  /** The unified field: gain, radius and white-hot core (world), swirl, breathing (amplitude, rad/s). */
+  field: {
+    gain: 1.8,
+    radiusWorld: 0.9,
+    hot: 3.2,
+    swirl: 3.2,
+    swirlRate: 0.05,
+    freq: 2.2,
+    axis: new Vector3(0.25, 1, 0.35),
+    breathe: 0.1,
+    breatheRate: 0.55,
+    /** At the end the field fades into the foam patch's own (smaller) core. */
+    endRadiusWorld: 0.45,
+  },
   colours: {
     /** Haze tint; edges use the blackbody colour at the (clamped) temperature, depth sinks to `far`. */
     deep: new Color(0.03, 0.04, 0.3),
     far: new Color(0.16, 0.035, 0.42),
     coreWhite: 0.55,
-    gravityGlow: new Color(0.03, 0.01, 0.08),
+    gravityGlow: new Color(0.05, 0.018, 0.14),
     chargeR: new Color(1.0, 0.12, 0.05),
     chargeG: new Color(0.1, 1.0, 0.18),
     chargeB: new Color(0.1, 0.3, 1.0),
@@ -119,9 +133,9 @@ export const params = {
   },
   beats: {
     unify: [0.28, 0.46] as const,
-    bubble: [0.3, 0.45, 0.88, 0.97] as const, // in, full, out start, gone
+    field: [0.26, 0.45, 0.86, 0.97] as const, // in, full, out start, gone
     gravity: [0.52, 0.8] as const,
-    gravityVeil: [0.5, 0.58, 0.7, 0.84] as const,
+    gravityVeil: [0.5, 0.57, 0.74, 0.86] as const,
     strong: [0.83, 0.94] as const,
     flicker: { centre: 0.895, halfWidth: 0.075, rate: 0.9 },
     toCentre: [0.85, 1.0] as const,
@@ -130,25 +144,26 @@ export const params = {
     strandsOut: [0.91, 0.97] as const,
   },
   /** Gravity veil radius (local units of the bounding radius), width, strength and absorption. */
-  gravityVeil: { radiusFrom: 0.41, radiusTo: 0.72, width: 0.035, strength: 1.0, absorb: 14, offset: new Vector3(-0.12, -0.1, 0.06), noiseScale: 0.9 },
+  gravityVeil: { radiusFrom: 0.2, radiusTo: 0.78, ease: 1.3, width: 0.055, strength: 1.0, absorb: 30, offset: new Vector3(-0.14, -0.1, 0.08), lattice: 0.55 },
   strands: {
-    ringRadius: 1.9,
-    arcStart: -0.6,
-    arcSpan: 4.6,
-    spin: 0.05,
-    /** Ring plane normal (tilted towards the camera so the ring reads as an open ellipse). */
-    normal: new Vector3(-0.22, 0.86, 0.46),
-    braidRadius: 0.14,
-    braidRadiusUnified: 0.09,
-    twist: 9,
-    tubeRadius: 0.0075,
-    intensity: 1.0,
+    halfLength: 2.7,
+    /** Braid axis (tilted up-right, slightly towards the camera) and its S-bend (world). */
+    axis: new Vector3(0.86, 0.36, 0.36),
+    bendN: 0.35,
+    bendB: 0.25,
+    braidRadius: 0.07,
+    braidRadiusUnified: 0.05,
+    fanRadius: 1.0,
+    wobble: 0.09,
+    twist: 7,
+    tubeRadius: 0.0055,
+    intensity: 0.75,
     flow: 0.9,
-    gravitySep: 0.75,
-    gravityLift: 0.45,
-    strongSep: 0.5,
-    strongLift: 0.6,
-    backDim: 0.3,
+    gravityDir: new Vector3(-0.2, -0.85, -0.45),
+    strongDir: new Vector3(0.15, 0.85, 0.5),
+    gravitySep: 1.1,
+    strongSep: 0.75,
+    backDim: 0.45,
   },
 };
 
@@ -193,7 +208,7 @@ export default (): CosmicScene => {
         resolutionScale: P.volumeScale[tierName] ?? 0.5,
         gravity: true,
         flicker: true,
-        bubble: true,
+        field: true,
       });
       const fu = foam.uniforms;
       fu.deep.value.copy(P.colours.deep);
@@ -217,19 +232,21 @@ export default (): CosmicScene => {
       su.colourB.value.copy(P.colours.chargeB);
       su.twist.value = S.twist;
       su.tubeRadius.value = S.tubeRadius;
-      su.ringRadius.value = S.ringRadius;
-      su.arcStart.value = S.arcStart;
-      su.arcSpan.value = S.arcSpan;
-      su.spin.value = S.spin;
+      su.halfLength.value = S.halfLength;
+      su.bendN.value = S.bendN;
+      su.bendB.value = S.bendB;
+      su.fanRadius.value = S.fanRadius;
+      su.wobble.value = S.wobble;
       su.gravitySep.value = S.gravitySep;
-      su.gravityLift.value = S.gravityLift;
       su.strongSep.value = S.strongSep;
-      su.strongLift.value = S.strongLift;
+      su.gravityDir.value.copy(S.gravityDir).normalize();
+      su.strongDir.value.copy(S.strongDir).normalize();
       su.backDim.value = S.backDim;
-      // Orthonormal ring frame from the plane normal.
-      const n = su.axisB.value.copy(S.normal).normalize();
-      su.axis.value.set(1, 0, 0).addScaledVector(n, -n.x).normalize();
-      su.axisN.value.crossVectors(n, su.axis.value).normalize();
+      // Orthonormal braid frame.
+      const ax = su.axis.value.copy(S.axis).normalize();
+      su.axisN.value.set(0, 0, 1).cross(ax).normalize();
+      su.axisB.value.crossVectors(ax, su.axisN.value).normalize();
+      fu.fieldAxis.value.copy(P.field.axis).normalize();
       scene.add(strands.mesh);
 
       this.update(0, globalsAt(this.range[0]), 0, 0);
@@ -244,7 +261,7 @@ export default (): CosmicScene => {
 
       // ── Beat envelopes ──
       const unify = smoothstep(B.unify[0], B.unify[1], s);
-      const bubbleOn = smoothstep(B.bubble[0], B.bubble[1], s) * (1 - smoothstep(B.bubble[2], B.bubble[3], s));
+      const fieldOn = smoothstep(B.field[0], B.field[1], s) * (1 - smoothstep(B.field[2], B.field[3], s));
       const grav = smoothstep(B.gravity[0], B.gravity[1], s);
       const veil = smoothstep(B.gravityVeil[0], B.gravityVeil[1], s) * (1 - smoothstep(B.gravityVeil[2], B.gravityVeil[3], s));
       const strong = smoothstep(B.strong[0], B.strong[1], s);
@@ -280,12 +297,15 @@ export default (): CosmicScene => {
       fu.stretch.value = 1;
       fu.focus.value.copy(P.focusOpen).multiplyScalar(1 - unify);
 
-      // The single bubble (unified field), in local units of the bounding radius.
-      fu.shellRadius.value = P.bubble.radiusWorld / look.bound;
-      fu.shellWidth.value = P.bubble.widthWorld / look.bound;
-      fu.shellGain.value = P.bubble.gain * bubbleOn;
-      fu.coronaGain.value = P.bubble.corona * bubbleOn;
-      fu.coronaLength.value = P.bubble.coronaWorld / look.bound;
+      // The unified field (local units of the bounding radius), gently breathing.
+      const Fd = P.field;
+      const breath = Math.sin(elapsed * Fd.breatheRate);
+      fu.fieldGain.value = Fd.gain * fieldOn * (1 + Fd.breathe * breath);
+      fu.fieldRadius.value = (lerp(Fd.radiusWorld, Fd.endRadiusWorld, calm) * (1 + 0.5 * Fd.breathe * breath)) / look.bound;
+      fu.fieldHot.value = Fd.hot;
+      fu.fieldSwirl.value = Fd.swirl;
+      fu.fieldPhase.value = churnPhase * Fd.swirlRate * 10;
+      fu.fieldFreq.value = Fd.freq;
 
       // Colour: the blackbody colour at the era's temperature (clamped LUT: the Rayleigh–Jeans blue-white).
       const [r, gg, b] = blackbodyRGB(g.T, rgb);
@@ -295,11 +315,11 @@ export default (): CosmicScene => {
 
       // Gravity veil (local units of the bounding radius).
       const gv = P.gravityVeil;
-      fu.gravityRadius.value = lerp(gv.radiusFrom, gv.radiusTo, grav);
+      fu.gravityRadius.value = lerp(gv.radiusFrom, gv.radiusTo, Math.pow(grav, gv.ease));
       fu.gravityWidth.value = gv.width * (1 + grav * 0.6);
       fu.gravityStrength.value = gv.strength * veil;
       fu.gravityOffset.value.copy(gv.offset).multiplyScalar(grav);
-      fu.layerNoiseScale.value = gv.noiseScale;
+      fu.latticeScale.value = gv.lattice;
 
       // Colour-charge flicker.
       fu.flicker.value = flick;

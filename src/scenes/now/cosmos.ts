@@ -141,7 +141,7 @@ export function createCosmos(
   let sfrPeak = 0;
   for (let z = 0; z < 10; z += 0.01) sfrPeak = Math.max(sfrPeak, madauDickinsonSFR(z));
   const zFirst = 14; // first galaxies: nothing farther than this shell
-  const rMin = 0.18;
+  const rMin = 0.09;
   const rMax = comovingDistanceGpc(1 / (1 + zFirst));
   const haze = createPoints({ count: hazeCount, resolution, fovDeg, sharpness: 5 });
   const v = new Vector3();

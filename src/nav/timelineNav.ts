@@ -92,6 +92,12 @@ export function initTimelineNav(root: HTMLElement): void {
     }
   });
 
+  const readout = q<HTMLElement>('[data-readout]')!;
+  badge.addEventListener('click', () => {
+    const open = !readout.hasAttribute('data-expanded');
+    readout.toggleAttribute('data-expanded', open);
+    badge.setAttribute('aria-expanded', String(open));
+  });
   $sceneInfo.subscribe((info) => {
     if (!info) return;
     badge.dataset.acc = info.accuracy;

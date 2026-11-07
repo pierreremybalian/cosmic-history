@@ -16,13 +16,13 @@
 //   0.78  the CMB, 45 billion light-years    → the real Planck map on the sphere of last scattering
 //   0.92  5% / 27% / 68%                      → the whole observable universe inside the CMB shell; calm drift
 
-import { PerspectiveCamera, Scene, Vector3, type RenderTarget, type Texture, type WebGPURenderer, NoColorSpace, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter } from 'three/webgpu';
+import { Group, PerspectiveCamera, Scene, Vector3, type RenderTarget, type Texture, type WebGPURenderer, NoColorSpace, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter } from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { globalsAt } from '../../physics/cosmology.ts';
 import { LITTLE_H, MPC_M, Z_LAST_SCATTERING } from '../../physics/constants.ts';
 import { madauDickinsonSFR } from '../../physics/recombination.ts';
 import { webAmplitude, WORLD_BOX } from '../../shared/gaussianField.ts';
-import { smootherstep, smoothstep } from '../../shared/math.ts';
+import { gaussian, mulberry32, smootherstep, smoothstep } from '../../shared/math.ts';
 import { createCosmicWeb, type CosmicWeb } from '../../shared/web.ts';
 import {
   addNearFade,
@@ -47,7 +47,7 @@ import type { CosmicScene, RenderContext } from '../types.ts';
 import { createCosmos, type Cosmos } from './cosmos.ts';
 import { createEarth, type Earth } from './earth.ts';
 import { centuriesSinceJ2000, earthAxis, eclipticPole, eclToWorld, eqToWorld, equatorialRaDec, galacticLB, moonEcliptic } from './ephemeris.ts';
-import { LOCAL_GROUP, M31 } from './localGroup.ts';
+import { LOCAL_GROUP, LOCAL_VOLUME, M31, NEARBY_CLUSTERS } from './localGroup.ts';
 import { createPoints, type Points } from './points.ts';
 import { createNeighbourhood, createSolarSystem, type Neighbourhood, type SolarSystem } from './solar.ts';
 
@@ -94,11 +94,13 @@ const params = {
     sf: 0.5,
   },
   m31: { stars: { low: 25_000, medium: 60_000, high: 120_000 }, sf: 0.3 },
-  web: { brightness: 0.1, contrast: 1.35, reveal: 0.5, outerFraction: 0.3, sphere: [10, 14.5] as const, galaxyRadius: 0.022 },
+  web: { brightness: 0.12, contrast: 1.35, reveal: 0.5, outerFraction: 0.3, sphere: [4.2, 7.2] as const, galaxyRadius: 0.022 },
   /** Galaxies beyond the Milky Way are enlarged progressively (up to this factor) so they stay visible. */
   galaxyBoost: 2.5,
   /** Extra enlargement as the Local Group recedes, so it stays a legible group until the web takes over. */
   galaxyBoostFar: 3.5,
+  /** Local Volume galaxies are enlarged a further ×this (they are seen from 10–40 Mpc). */
+  lvBoost: 1.8,
   cosmos: { haze: { low: 50_000, medium: 140_000, high: 280_000 } },
   stars: { low: 6000, medium: 14000, high: 24000 },
   belts: 9000,
@@ -112,6 +114,7 @@ const params = {
     galaxy: [19.7, 20.6, 23.9, 24.5],
     sunMarker: [20.4, 21.0, 22.3, 22.9],
     localGroup: [21.9, 22.7, 24.05, 24.6],
+    localVolume: [22.6, 23.2, 24.3, 24.85],
     web: [24.0, 24.6, 25.9, 26.6],
     haze: [25.0, 25.9, 99, 100],
     cmb: [25.95, 26.55, 99, 100],
@@ -148,6 +151,7 @@ export default (): CosmicScene => {
   let sunMarker: Points;
   let m31: SpiralGalaxy;
   let lgSprites: GalaxySprites;
+  let lvSprites: GalaxySprites;
   let web: CosmicWeb;
   let webTiles: Tiles;
   let gal: GalaxyImpostors;
@@ -168,6 +172,7 @@ export default (): CosmicScene => {
   const dirSolar = new Vector3();
   const dirGalaxy = new Vector3();
   const dirLG = new Vector3();
+  const virgoDir = new Vector3();
   const dirWeb = new Vector3();
   const dirCosmos = new Vector3();
   const sunDirFromEarth = new Vector3();
@@ -177,6 +182,7 @@ export default (): CosmicScene => {
   const tmp = new Vector3();
   const tmp2 = new Vector3();
   const yAxis = new Vector3(0, 1, 0);
+  const webRot = new Group();
   const webNear0 = uniform(0.1);
   const webNear1 = uniform(0.3);
   const sphereC = uniform(new Vector3());
@@ -302,6 +308,47 @@ export default (): CosmicScene => {
       lgSprites = createGalaxySprites(specs, res, params.fov);
       lgSprites.uniforms.minPx.value = 2.5;
       lgScene.add(lgSprites.sprite);
+
+      // ── Local Volume: nearby groups and the Virgo and Fornax clusters (Mpc, Sun-centred) ──
+      {
+        const lvRand = mulberry32(2013);
+        const lv: GalaxySpriteSpec[] = LOCAL_VOLUME.map((g, i) => ({
+          position: galacticLB(g.l, g.b, g.d, new Vector3()),
+          radius: g.r / 1000,
+          seed: (i * 0.173) % 1,
+          pa: lvRand() * Math.PI,
+          cosi: 0.3 + 0.7 * lvRand(),
+          settle: g.type === 'irregular' ? 0.1 : 0.9,
+          ell: g.type === 'elliptical' ? 1 : 0,
+          sf: g.type === 'elliptical' ? 0 : 0.5,
+          brightness: 1.4,
+        }));
+        for (const c of NEARBY_CLUSTERS) {
+          const centre = galacticLB(c.l, c.b, c.d, new Vector3());
+          for (let k = 0; k < c.members; k++) {
+            const r = c.radiusMpc * Math.pow(lvRand(), 1.6);
+            const off = new Vector3(gaussian(lvRand), gaussian(lvRand), gaussian(lvRand)).normalize().multiplyScalar(r);
+            const core = 1 - r / c.radiusMpc;
+            const elliptical = lvRand() < 0.25 + 0.6 * core;
+            lv.push({
+              position: centre.clone().add(off),
+              radius: (k === 0 ? 40 : 3 + 12 * Math.pow(lvRand(), 3)) / 1000,
+              seed: lvRand(),
+              pa: lvRand() * Math.PI,
+              cosi: 0.3 + 0.7 * lvRand(),
+              settle: 0.8,
+              ell: k === 0 || elliptical ? 1 : 0,
+              sf: elliptical ? 0 : 0.4,
+              brightness: k === 0 ? 2.0 : 1.1,
+            });
+          }
+        }
+        lvSprites = createGalaxySprites(lv, res, params.fov);
+        lvSprites.uniforms.minPx.value = 2.0;
+        lgScene.add(lvSprites.sprite);
+        const v = NEARBY_CLUSTERS[0]!;
+        galacticLB(v.l, v.b, 1, virgoDir).normalize();
+      }
       lgM.copy(gcM).lerp(m31Pos.clone().multiplyScalar(MPC_M), 0.42);
 
       // ── cosmic web today (web world units, Sun-centred) ──
@@ -315,7 +362,8 @@ export default (): CosmicScene => {
       addSphereFade(web.material, sphereC, sphere0, sphere1);
       addNearFade(web.material, webNear0, webNear1);
       webTiles = tileBox(web.material, web.count, Math.round(web.count * params.web.outerFraction));
-      webScene.add(webTiles.group);
+      webScene.add(webRot);
+      webRot.add(webTiles.group);
       const mwPeak = pickMilkyWayPeak(ctx.field);
       gal = createGalaxyImpostors(ctx, { fieldGalaxies: 4000, radius: params.web.galaxyRadius, companions: 0, milkyWay: mwPeak, seed: 1104, densityAmplitude: 1 });
       gal.uniforms.amplitude.value = webAmplitude(1);
@@ -323,9 +371,26 @@ export default (): CosmicScene => {
       gal.uniforms.mergeClock.value = 2;
       addSphereFade(gal.material, sphereC, sphere0, sphere1);
       galTiles = tileBox(gal.material, gal.count, gal.count);
-      webScene.add(galTiles.group);
+      webRot.add(galTiles.group);
       // Put our own halo at the centre: shift every tile so the Milky Way peak lands on the origin.
       peakWorld(ctx.field, mwPeak, webAmplitude(1), mwPeakShift);
+      // Orient this random patch of web so its nearest massive cluster lies toward Virgo, which the Local Volume
+      // stage has just shown at its catalogue position: the hand-off from real map to simulation stays continuous.
+      {
+        const fd = ctx.field.data!;
+        const n = fd.peaks.length / 4;
+        const p = new Vector3();
+        for (let i = 0; i < n; i++) {
+          if (i === mwPeak) continue;
+          peakWorld(ctx.field, i, webAmplitude(1), p).sub(mwPeakShift);
+          p.set(p.x - Math.round(p.x / WORLD_BOX) * WORLD_BOX, p.y - Math.round(p.y / WORLD_BOX) * WORLD_BOX, p.z - Math.round(p.z / WORLD_BOX) * WORLD_BOX);
+          const d = p.length();
+          if (d > 0.7 && d < 2.2) {
+            webRot.quaternion.setFromUnitVectors(p.normalize(), virgoDir);
+            break;
+          }
+        }
+      }
 
       // ── observable universe (Gpc, Sun-centred) ──
       const cosScene = makeLayer('cosmos', GPC_M, new Vector3(), 1e-3, 200);
@@ -379,7 +444,10 @@ export default (): CosmicScene => {
       tmp.copy(m31Pos).normalize();
       tmp2.crossVectors(tmp, yAxis).normalize();
       dirLG.copy(tmp2).multiplyScalar(Math.cos(0.45)).addScaledVector(yAxis, Math.sin(0.45)).normalize();
-      dirWeb.copy(dirLG).applyAxisAngle(yAxis, 0.7).normalize();
+      // Web: broadside to both Virgo and Andromeda, so Virgo rises into the top of the frame as we pull back.
+      dirWeb.crossVectors(virgoDir, tmp).normalize();
+      if (dirWeb.dot(dirLG) < 0) dirWeb.negate();
+      dirWeb.multiplyScalar(Math.cos(0.44)).addScaledVector(virgoDir, -Math.sin(0.44)).normalize();
       dirCosmos.copy(dirWeb).applyAxisAngle(yAxis, 0.5).addScaledVector(yAxis, 0.25).normalize();
 
       this.update(0.5, globalsAt(RANGE[1]), 0, 0);
@@ -397,7 +465,7 @@ export default (): CosmicScene => {
       target.copy(earthM).multiplyScalar(1 - smootherstep(10.6, 11.7, x));
       target.lerp(gcM, smootherstep(20.4, 21.0, x));
       target.lerp(lgM, smootherstep(22.15, 22.8, x));
-      target.multiplyScalar(1 - smootherstep(23.6, 24.4, x));
+      target.multiplyScalar(1 - smootherstep(22.95, 23.6, x));
 
       // Direction: Earth → ecliptic → galaxy → Local Group → web → cosmos, then a slow orbit.
       blendDir(dir, dirEarth, dirSolar, x, 9.6, 12.4);
@@ -474,9 +542,12 @@ export default (): CosmicScene => {
 
       // Local Group.
       const vLG = fade(x, V.localGroup!);
-      layers.localGroup!.visible = vLG > 1e-3;
+      const vLV = fade(x, V.localVolume!);
+      layers.localGroup!.visible = vLG > 1e-3 || vLV > 1e-3;
       m31.uniforms.brightness.value = vLG;
       lgSprites.uniforms.brightness.value = vLG;
+      lvSprites.uniforms.brightness.value = vLV;
+      lvSprites.uniforms.size.value = boost * params.lvBoost;
 
       // Cosmic web, centred on our halo.
       const vWeb = fade(x, V.web!);
@@ -552,6 +623,7 @@ export default (): CosmicScene => {
       sunMarker.dispose();
       m31.dispose();
       lgSprites.dispose();
+      lvSprites.dispose();
       web.dispose();
       gal.dispose();
       cosmos.dispose();

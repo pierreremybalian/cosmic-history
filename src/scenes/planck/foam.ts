@@ -502,12 +502,13 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
           const q = p.mul(ca).add(cross(k, p).mul(sa)).add(k.mul(dot(k, p).mul(float(1).sub(ca))));
           const n1 = texture3D(tex, q.mul(u.fieldFreq).add(vec3(0.71, 0.23, ph.mul(0.004).add(0.41)))).rg;
           const n2 = texture3D(tex, q.mul(u.fieldFreq.mul(2.3)).add(vec3(0.13, ph.mul(-0.006).add(0.57), 0.29))).rg;
-          const wisps = smoothstep(-0.8, 1.4, n1.x.mul(0.6).add(n2.x.mul(0.45)).add(n1.y.mul(0.2)));
+          const wv = smoothstep(-0.9, 1.5, n1.x.mul(0.6).add(n2.x.mul(0.45)).add(n1.y.mul(0.2)));
+          const wisps = wv.mul(wv).mul(1.6);
           const x2 = rs.div(fr).mul(rs.div(fr));
           const profile = float(1).div(float(1).add(x2).mul(float(1).add(x2)));
           const hotCore = gauss(rs, fr.mul(0.38));
           const fade = float(1).sub(smoothstep(0.72, 0.97, rs));
-          fieldE.assign(hotCore.mul(u.fieldHot).add(profile.mul(float(0.2).add(wisps.mul(0.8)))).mul(u.fieldGain).mul(fade));
+          fieldE.assign(hotCore.mul(u.fieldHot).add(profile.mul(float(0.12).add(wisps))).mul(u.fieldGain).mul(fade));
           fieldCol.assign(mix(u.hot, u.core, clamp(hotCore.mul(1.3).add(profile.mul(0.25)), 0, 1)));
           fieldHue.assign(n1.y.mul(0.7).add(n2.y.mul(0.3)));
         });
@@ -547,14 +548,15 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
           const gd = p.sub(u.gravityOffset);
           const gr = length(gd);
           const band = gauss(gr.sub(u.gravityRadius), u.gravityWidth).mul(u.gravityStrength).mul(float(1).sub(smoothstep(0.82, 0.97, gr)));
-          const dir = gd.div(max(gr, 1e-4));
-          const nn = texture3D(tex, dir.mul(u.latticeScale).add(vec3(0.37, 0.61, ph.mul(0.003).add(0.17)))).rg;
+          // Pattern coordinates scale with the shell radius, so the net expands with the layer as it lifts.
+          const gq = gd.div(max(u.gravityRadius, 0.05));
+          const nn = texture3D(tex, gq.mul(u.latticeScale).add(vec3(0.37, 0.61, ph.mul(0.003).add(0.17)))).rg;
           const ridge = float(1).sub(nn.x.abs());
           const ridge2 = float(1).sub(nn.y.abs());
-          const net = smoothstep(0.78, 0.97, ridge).add(smoothstep(0.86, 0.99, ridge2).mul(0.6));
-          const g = band.mul(clamp(net, 0, 1).mul(0.85).add(0.15));
+          const net = smoothstep(0.6, 0.93, ridge).add(smoothstep(0.78, 0.97, ridge2).mul(0.6));
+          const g = band.mul(clamp(net, 0, 1).mul(0.92).add(0.08));
           stepSigma.addAssign(g.mul(u.gravityAbsorb));
-          stepE.assign(stepE.mul(float(1).sub(clamp(g, 0, 1).mul(0.8))).add(u.gravityGlow.mul(band).mul(net)));
+          stepE.assign(stepE.mul(float(1).sub(clamp(g, 0, 1).mul(0.85))).add(u.gravityGlow.mul(band).mul(clamp(net, 0, 1))));
           bandDist.assign(max(gr.sub(u.gravityRadius).abs().sub(u.gravityWidth.mul(2)), 0).mul(u.radius).mul(0.8));
         });
       }

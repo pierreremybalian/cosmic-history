@@ -184,3 +184,9 @@ Credits page:
 > GCS-DWAR on the GCS share of the supercomputer Hazel Hen at the High Performance Computing
 > Center Stuttgart (HLRS), as well as on the machines of the Max Planck Computing and Data
 > Facility (MPCDF) in Garching, Germany. Downsampled to 2M particles, colour mapped.
+
+
+## Earth geography (life scene)
+
+- `src/scenes/life/geo/*` are built offline by `scripts/planet/geo.mjs` (Natural Earth 1:50m land polygons → per-plate signed-distance masks; NASA Blue Marble 2048 → land colour) and `scripts/planet/clouds.mjs` (Blue Marble cloud map). Both sources are public domain. The scripts use `sharp` (present transitively via Astro) and take the downloaded source files as arguments; see the header of each script.
+- Credit (footer): NASA Blue Marble (NASA Earth Observatory); Natural Earth.

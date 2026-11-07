@@ -54,6 +54,11 @@ export const CREDITS: { label: string; text: string; url?: string }[] = [
     url: 'https://arxiv.org/abs/1912.01132',
   },
   {
+    label: 'Earth',
+    text: 'Present-day land colour and clouds from NASA Blue Marble (NASA Earth Observatory); coastlines from Natural Earth 1:50m. Both public domain. Past continents are an illustrative plate reconstruction.',
+    url: 'https://visibleearth.nasa.gov/collection/1484/blue-marble',
+  },
+  {
     label: 'Rendering',
     text: 'three.js WebGPU renderer and TSL shaders, Lenis smooth scroll, Astro.',
     url: 'https://threejs.org/',

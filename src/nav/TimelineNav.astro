@@ -68,7 +68,7 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
     <p class="when" data-when aria-hidden="true" set:html={supHtml('5.4 × 10⁻⁴⁴ s')} />
     <p class="chapter" data-chapter-title aria-hidden="true">{chapters[0]!.title}</p>
     <p class="phys" data-phys aria-hidden="true"></p>
-    <button type="button" class="badge" data-badge data-acc="metaphor" aria-describedby="acc-note">
+    <button type="button" class="badge" data-badge data-acc="metaphor" aria-describedby="acc-note" aria-expanded="false" title="Show the full accuracy note">
       <span class="dot"></span><span data-badge-label>Metaphor</span>
     </button>
     <p class="acc-note" id="acc-note" role="note" data-acc-note>No tested physics describes this era; this is an artistic metaphor.</p>
@@ -242,11 +242,20 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
     --acc: var(--color-acc-metaphor);
   }
   .acc-note {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
     margin-top: 0.45rem;
     font-family: var(--font-sans);
     font-size: 0.72rem;
     line-height: 1.35;
     color: var(--color-mute);
+  }
+  .readout[data-expanded] .acc-note {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
   }
   .mapped {
     margin-top: 0.4rem;
