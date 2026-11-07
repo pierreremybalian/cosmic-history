@@ -4,8 +4,9 @@
 // restarts at the boundary, so everything here is driven by the globals g (t, z, T) and the ionisation
 // history: x_e(z) sets the fog's density, the Thomson transparency e^(−τ(z)) sets how much of the
 // last-scattering shell shows through it. Beats (see photon.mdx / recombination.mdx):
-//   photon 0.00–0.60  white-hot → blue-white opaque glow of nuclei, electrons and light (blackbody LUT of T);
-//                     photons random-walk in short zig-zags (beat 0.32), specks of matter drift past
+//   photon 0.00–1.00  inside an incandescent plasma: true emission–absorption through turbulent, ringing structure
+//                     that streams past the camera (parallax, radial depth), white-hot and blooming at first, then
+//                     blue-white → white → yellow → orange with T (blackbody LUT); faint photon threads random-walk
 //   photon 0.45–1.00  acoustic shells expand through the fog and sweep the specks into fronts (beat 0.72)
 //   photon 0.93       matter–radiation equality (~50 kyr): dark-matter wells deepen as cooler patches
 //   rec    0.00–0.40  orange fog (≈3,600 K); Planck's pattern rises in the fog, blurred; Hα glints as atoms form
@@ -169,7 +170,7 @@ export const params = {
 };
 
 const FOG_NOTE =
-  'Fog colour, cooling and clearing follow the computed temperature, free-electron fraction and Thomson optical depth; its structure, sound waves, particles and brightness are illustrative, and its fluctuations are hugely exaggerated (the real ones are a few parts in 100,000).';
+  'Fog colour, cooling and clearing follow the computed temperature, free-electron fraction and Thomson optical depth; its turbulent structure, motion, sound waves, particles and brightness are illustrative, and its fluctuations are hugely exaggerated (the real ones are a few parts in 100,000).';
 const MAP_NOTE =
   'The sphere is the Planck 2018 SMICA map (ESA and the Planck Collaboration), colour mapped ±300 µK; the fog before it is a visual model driven by the computed temperature and free-electron fraction.';
 const STANDIN_NOTE =

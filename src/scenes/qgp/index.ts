@@ -48,19 +48,19 @@ export const params = {
   near: 0.45,
   fog: 3.6,
   /** Share of ctx.quality.particles per layer. */
-  share: { quarks: 0.11, bath: 0.3, glitter: 0.55, gluons: 0.04 },
+  share: { quarks: 0.11, bath: 0.15, glitter: 0.68, gluons: 0.06 },
   bathSteps: { low: 8, medium: 14, high: 18 } as Record<string, number>,
-  bathLength: 11,
-  bathIntensity: 0.45,
-  bathFloor: 0.02,
+  bathLength: 7,
+  bathIntensity: 1.6,
+  bathFloor: 0,
   /** Depth over which the glow integrates (shorter = more contrast in the turbulence). */
-  bathFog: 5.8,
+  bathFog: 3,
   /** White-hot lift of the glow in the hot phase (0 = pure blackbody LUT hue). */
-  hotTint: 0,
+  hotTint: 0.25,
   /** World size of the primordial-field tile used for the reheating ripples. */
   rippleScale: 9,
   /** Hot currents shared by the glow and the particles. */
-  currents: { scale: 0.5, sharp: 5, voids: 0.95, floor: 0.15 },
+  currents: { scale: 0.45, sharp: 7, voids: 0.95, floor: 0.04 },
   /** Flow morph rate (per massive-clock second). */
   morphRate: 0.03,
   /** Wall-clock length of a motion trail (s): bath strands, quarks. */
@@ -111,9 +111,9 @@ export const params = {
     /** Excess-matter slots: 1 in 50 (real: ~1 in a billion). */
     extraFrac: 1 / 50,
     quarkWidth: 0.02,
-    quarkIntensity: 3.5,
+    quarkIntensity: 5,
     gluonWidth: 0.008,
-    gluonIntensity: 14.0,
+    gluonIntensity: 20,
     gluonPeriod: 0.9,
     gluonLag: 0.35,
     gold: [1.0, 0.68, 0.26],
@@ -125,7 +125,7 @@ export const params = {
     rippleScale: 0.9,
     heroGluons: 4,
     glitterWidth: 0.004,
-    glitterIntensity: 2.2,
+    glitterIntensity: 3.5,
     glitterDrift: 0.5,
   } satisfies QgpShape as QgpShape,
 };
@@ -151,7 +151,7 @@ export default (): CosmicScene => {
     range: sceneRange('qgp'),
     accuracy: 'modelled',
     accuracyNote:
-      'Particles are drawn far larger, fewer and slower than real, the ripples are exaggerated, colour charge is a label rather than a colour, the post-Higgs slowdown is exaggerated (most particles stay near light speed) and the matter excess is shown as about 1 in 50 instead of 1 in a billion.',
+      'Sizes, speeds and ripples are exaggerated, colour charge is a label, the post-Higgs slowdown is exaggerated and the matter excess is ~1 in 50, not 1 in a billion.',
     colourMapped: false,
     async init(ctx: RenderContext) {
       renderer = ctx.renderer;
