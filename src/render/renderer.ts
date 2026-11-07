@@ -283,7 +283,8 @@ export async function createEngine(opts: EngineOptions): Promise<Engine | null> 
       statsAt = now;
       statFrames = 0;
     }
-    if (quality.auto && !single && !changingTier && monitor.push(dtMs, nowS)) {
+    const shouldDrop = monitor.push(dtMs, nowS);
+    if (quality.auto && !single && !changingTier && shouldDrop) {
       const lower = lowerTier(quality.name);
       if (lower) {
         console.info(`[quality] median frame > 22 ms for 3 s: ${quality.name} → ${lower}`);
