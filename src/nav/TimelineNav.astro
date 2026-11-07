@@ -9,7 +9,7 @@ import { formatDuration, formatLookback } from '../time/format.ts';
 import { YEAR_S, T_PLANCK_S } from '../physics/constants.ts';
 import { AGE_SECONDS } from '../physics/cosmology.ts';
 import { ACCURACY_HELP, ACCURACY_LABEL } from '../data/site.ts';
-import { supHtml } from '../lib/sup.ts';
+import { supHtml, supText } from '../lib/sup.ts';
 
 interface Props {
   titles: Record<string, string>;
@@ -92,7 +92,7 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
       <ol class="chapters">
         {chapters.map((c) => (
           <li style={`--p:${c.p}`}>
-            <button type="button" data-goto={c.p + 0.0004} data-chapter-btn={c.id}>
+            <button type="button" data-goto={c.p + 0.0004} data-chapter-btn={c.id} aria-label={`Go to chapter: ${c.title}`}>
               <span class="tick"></span><span class="label">{c.title}</span>
             </button>
           </li>
@@ -107,7 +107,7 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
               class="ev"
               data-goto={e.p}
               data-event={e.id}
-              aria-label={`${e.name}, ${e.label}. ${e.certainty}.`}
+              aria-label={`${e.name}, ${supText(e.label)}. ${e.certainty}.`}
               aria-describedby={`tip-${e.id}`}
             >
               <span class="pip"></span>
@@ -354,8 +354,8 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
   .ev {
     display: grid;
     place-items: center;
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     padding: 0;
     border: 0;
     background: none;

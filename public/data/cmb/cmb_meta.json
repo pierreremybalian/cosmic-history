@@ -1,0 +1,143 @@
+{
+  "minMicroK": -300,
+  "maxMicroK": 300,
+  "encoding": {
+    "type": "uint8 grayscale, linear in ΔT",
+    "decode": "dT_microK = value / 255 * (maxMicroK - minMicroK) + minMicroK   (0 -> -300 µK, 255 -> +300 µK; values beyond ±300 µK are clipped)",
+    "shader": "s = texture(...).r in [0,1]; t = 2*s - 1 in [-1,1] (= ΔT/300 µK) -> cmbColorNode(t)",
+    "stepMicroK": 2.3529,
+    "colorSpace": "data, not colour: load with texture.colorSpace = NoColorSpace (no sRGB decode)"
+  },
+  "projection": "equirectangular",
+  "frame": "galactic",
+  "lonAtCenterDeg": 0,
+  "lonIncreases": "left",
+  "lonAtLeftEdgeDeg": 180,
+  "lonAtRightEdgeDeg": 180,
+  "latTop": 90,
+  "latBottom": -90,
+  "convention": {
+    "pixelCentres": "column i (0-based, left to right) of W: l = (180 - 360*(i+0.5)/W) mod 360 deg; row j (0-based, top to bottom) of H: b = 90 - 180*(j+0.5)/H deg",
+    "galacticCentre": "l = 0 lies exactly on the boundary between columns W/2-1 and W/2 (u = 0.5); u = 0.25 is l = 90°, u = 0.75 is l = 270°, u = 0 and u = 1 are l = 180° (wrap: use RepeatWrapping on S)",
+    "galacticCartesian": "x -> (l=0°, b=0°) Galactic Centre, y -> (l=90°, b=0°), z -> North Galactic Pole (b=+90°); right-handed",
+    "dirToUv": "l = atan2(d.y, d.x); b = asin(d.z); u = fract(0.5 - l/(2π)); v = 0.5 + b/π  (v for three.js flipY = true, the TextureLoader default; image row fraction from top = 1 - v = 0.5 - b/π)",
+    "threeEquirectUV": "three.js equirectUV(dirWorld) [u = atan(d.z, d.x)/(2π) + 0.5, v = asin(d.y)/π + 0.5] samples this texture correctly when world = (x_G, z_G, -y_G): world +X = Galactic Centre, world +Y = North Galactic Pole, world -Z = (l=90°, b=0°). Proper rotation, not mirrored.",
+    "orientation": "sky as seen from inside the celestial sphere, same as published Planck all-sky maps (Galactic Centre in the middle, l increasing to the left)"
+  },
+  "files": [
+    {
+      "path": "/data/cmb/cmb_dT_4096x2048.png",
+      "width": 4096,
+      "height": 2048,
+      "format": "png",
+      "pixel": "uint8 grayscale (L8)",
+      "bytes": 4568270,
+      "tier": "high"
+    },
+    {
+      "path": "/data/cmb/cmb_dT_2048x1024.png",
+      "width": 2048,
+      "height": 1024,
+      "format": "png",
+      "pixel": "uint8 grayscale (L8)",
+      "bytes": 1422700,
+      "tier": "medium"
+    },
+    {
+      "path": "/data/cmb/cmb_preview_1024x512.webp",
+      "width": 1024,
+      "height": 512,
+      "format": "webp",
+      "pixel": "sRGB colour-mapped preview",
+      "bytes": 375004,
+      "tier": "HUD / stills"
+    }
+  ],
+  "source": "https://irsa.ipac.caltech.edu/data/Planck/release_3/all-sky-maps/maps/component-maps/cmb/COM_CMB_IQU-smica_2048_R3.00_full.fits",
+  "sourceAlternate": "https://pla.esac.esa.int/pla/aio/product-action?MAP.MAP_ID=COM_CMB_IQU-smica_2048_R3.00_full.fits",
+  "file": "COM_CMB_IQU-smica_2048_R3.00_full.fits",
+  "fileBytes": 2013312960,
+  "fileSha256": "60952c645eb33d151905ddf5837477e15ca02a3261feca4ceca3c3feece4f9ac",
+  "release": "Planck 2018 (PR3) SMICA CMB map, R3.00 full mission",
+  "column": "I_STOKES_INP",
+  "unit": "K_CMB",
+  "nside": 2048,
+  "ordering": "NESTED",
+  "smoothingArcmin": 5.0,
+  "smoothing": "Gaussian beam FWHM 5′ applied in harmonic space (lmax 6143, map2alm iter 1), on top of SMICA's native 5′ resolution",
+  "monopoleDipoleRemoved": true,
+  "fittedMonopoleMicroK": -0.0099,
+  "fittedDipoleAmplitudeMicroK": 0.2516,
+  "badPixels": 0,
+  "resampling": "bilinear HEALPix interpolation (healpy get_interp_val), 2x2 supersampled and box-averaged for 4096x2048; 2048x1024 and 1024x512 box-downsampled from the 4096 float image before quantisation",
+  "previewColorMap": {
+    "stops": [
+      [
+        -1.0,
+        "#0a0f3d"
+      ],
+      [
+        -0.66,
+        "#1b3fa8"
+      ],
+      [
+        -0.33,
+        "#5aa2e6"
+      ],
+      [
+        0.0,
+        "#f4f1e6"
+      ],
+      [
+        0.33,
+        "#f2a35a"
+      ],
+      [
+        0.66,
+        "#c8432a"
+      ],
+      [
+        1.0,
+        "#5c0d12"
+      ]
+    ],
+    "from": "src/shared/color.ts",
+    "interpolation": "piecewise linear in linear-light RGB between stops (mirrors cmbColor() in src/shared/color.ts), sRGB-encoded",
+    "t": "ΔT / 300 µK, clipped to [-1, 1]"
+  },
+  "stats": {
+    "rmsMicroK": 104.01,
+    "minMicroK": -507.9,
+    "maxMicroK": 519.8,
+    "clippedFraction": 0.003942,
+    "note": "pixel statistics of the 4096x2048 float image (equirectangular, not area-weighted)"
+  },
+  "checks": {
+    "orientation": {
+      "samples": 20000,
+      "image": "cmb_dT_4096x2048.png",
+      "correlation": 0.9989,
+      "correlationIfMirrored": 0.0331,
+      "rmsResidualMicroK": 5.26,
+      "passed": true
+    },
+    "coldSpot": {
+      "centreLB": [
+        209.0,
+        -57.0
+      ],
+      "discRadiusDeg": 5.0,
+      "meanMicroK": -109.4,
+      "randomDiscMeanMicroK": 1.29,
+      "randomDiscStdMicroK": 35.28,
+      "sigma": -3.14,
+      "fractionOfRandomDiscsColder": 0.0
+    }
+  },
+  "credit": "Cosmic microwave background: ESA and the Planck Collaboration (Planck 2018 SMICA map, Planck Legacy Archive). Colour mapped.",
+  "creditShort": "Credit: ESA, Planck Collaboration",
+  "acknowledgement": "Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada.",
+  "citation": "Planck Collaboration 2020, Planck 2018 results. IV. Diffuse component separation, A&A 641, A4, doi:10.1051/0004-6361/201833881",
+  "license": "ESA Space Science Archives terms (https://www.cosmos.esa.int/web/esdc/terms-and-conditions): data distributed under CC BY-NC 3.0 IGO; free to use with acknowledgement; commercial use requires prior authorisation from ESA (data.licences@esa.int).",
+  "generator": "scripts/cmb_to_equirect.py 1.0.0 (healpy 1.20.1, numpy 2.5.4)"
+}

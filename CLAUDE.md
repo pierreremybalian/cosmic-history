@@ -3,7 +3,7 @@
 Scroll-driven 3D journey from the Planck epoch to today. Astro 7, vanilla TypeScript islands, three.js r186 WebGPU renderer with TSL shaders (automatic WebGL2 fallback), nanostores, Lenis. Static output on Cloudflare Pages. `HANDOFF.md` is the spec; `DECISIONS.md` logs deviations; `SCENES.md` is the scene authoring guide.
 
 ## Dev
-- `pnpm dev` (port 4330). Scene harness: `/dev/scenes/?scene=<id>&local=0.5` (slider, FPS, GPU memory, load/unload ×50 leak test).
+- `pnpm dev` (port 4340). Scene harness: `/dev/scenes/?scene=<id>&local=0.5` (slider, FPS, GPU memory, load/unload ×50 leak test).
 - `pnpm test` (physics, time mapping, formatter, data schema, field) and `pnpm check` must pass before anything is done. `pnpm build` also writes `dist/_headers`.
 - Screenshots: `node scripts/shoot.ts --scene <id> --locals 0.1,0.5,0.9 --outdir scratch/shots` (`--webgl`, `--leak`, `--page 0,0.5`). Stills: `pnpm stills` (needs a running dev or preview server).
 - Data: `node scripts/seed-data.ts` regenerates events/eras JSON + schemas; `scripts/cmb_to_equirect.py` rebuilds the CMB textures (venv in scripts/.venv).

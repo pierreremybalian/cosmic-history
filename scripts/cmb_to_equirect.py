@@ -95,7 +95,7 @@ FALLBACK_CMB_STOPS = [
     (1.0, "#5c0d12"),
 ]
 
-CREDIT = "CMB map: ESA and the Planck Collaboration (Planck 2018 SMICA, Planck Legacy Archive). Colour mapped."
+CREDIT = "Cosmic microwave background: ESA and the Planck Collaboration (Planck 2018 SMICA map, Planck Legacy Archive). Colour mapped."
 CREDIT_SHORT = "Credit: ESA, Planck Collaboration"
 LICENSE = (
     "ESA Space Science Archives terms (https://www.cosmos.esa.int/web/esdc/terms-and-conditions): "
@@ -544,8 +544,8 @@ def main() -> None:
         log(f"[check] cold spot: {checks['coldSpot']}")
 
     meta = {
-        "minMicroK": lo,
-        "maxMicroK": hi,
+        "minMicroK": int(lo) if float(lo).is_integer() else lo,
+        "maxMicroK": int(hi) if float(hi).is_integer() else hi,
         "encoding": {
             "type": "uint8 grayscale, linear in ΔT",
             "decode": "dT_microK = value / 255 * (maxMicroK - minMicroK) + minMicroK   (0 -> -300 µK, 255 -> +300 µK; values beyond ±300 µK are clipped)",

@@ -67,7 +67,7 @@ API = "https://www.tng-project.org/api"
 BYTES_PER_PARTICLE = 3 * 8 + 8  # float64 Coordinates + uint64 ParticleIDs (TNG snapshot dtypes)
 SLICE = 4_000_000  # particles processed at a time within a chunk (bounds memory)
 
-CREDIT = "Dark-matter simulation data: IllustrisTNG (Nelson et al. 2019). Colour mapped."
+CREDIT = "Dark-matter simulation: IllustrisTNG ({family}), Nelson et al. 2019, tng-project.org. Colour mapped."
 CITATIONS = {
     "release": "Nelson D. et al. 2019, The IllustrisTNG simulations: public data release, Computational Astrophysics and Cosmology 6, 2 (arXiv:1812.05609)",
     "TNG100/TNG300": [
@@ -481,7 +481,7 @@ def main() -> None:
         },
         "snapshots": entries,
         "source": f"{args.api}/{args.sim}/",
-        "credit": CREDIT,
+        "credit": CREDIT.format(family=args.sim.split("-")[0]),
         "citation": CITATIONS["release"],
         "citationsSimulation": CITATIONS["TNG50"] if args.sim.startswith("TNG50") else CITATIONS["TNG100/TNG300"],
         "license": LICENSE,

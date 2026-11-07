@@ -8,9 +8,9 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "dev": "astro dev --port 4330",
+    "dev": "astro dev --port 4340",
     "build": "astro build && node scripts/headers.mjs",
-    "preview": "astro preview --port 4330",
+    "preview": "astro preview --port 4341",
     "astro": "astro",
     "check": "astro check",
     "test": "vitest run",

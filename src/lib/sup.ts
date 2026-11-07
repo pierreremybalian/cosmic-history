@@ -22,3 +22,8 @@ const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').rep
 export function supHtml(text: string): string {
   return escape(text).replace(RUN, (m) => `<sup>${[...m].map((c) => SUP[c] ?? c).join('')}</sup>`);
 }
+
+/** Plain-text version for aria labels: "10⁻³⁶ s" → "10 to the power −36 s". */
+export function supText(text: string): string {
+  return text.replace(RUN, (m) => ` to the power ${[...m].map((c) => SUP[c] ?? c).join('')}`);
+}

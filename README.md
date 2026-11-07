@@ -4,7 +4,7 @@ A scroll-driven, full-screen 3D journey through the history of the universe, fro
 
 ```
 pnpm install
-pnpm dev          # http://localhost:4330
+pnpm dev          # http://localhost:4340
 pnpm test         # physics, time mapping, data schema
 pnpm build        # static site in dist/
 ```

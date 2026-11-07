@@ -18,7 +18,7 @@ interpreter was needed.
 | --- | --- |
 | Product | Planck 2018 (PR3) SMICA CMB map, full mission, release R3.00 |
 | File | `COM_CMB_IQU-smica_2048_R3.00_full.fits` (2,013,312,960 bytes; header DATE 2018-04-20) |
-| sha256 | `__SHA__` |
+| sha256 | `60952c645eb33d151905ddf5837477e15ca02a3261feca4ceca3c3feece4f9ac` (downloaded 2026-11-07; spot-checked against the server at range boundaries) |
 | Downloaded from | NASA/IPAC IRSA mirror of the Planck Legacy Archive: https://irsa.ipac.caltech.edu/data/Planck/release_3/all-sky-maps/maps/component-maps/cmb/COM_CMB_IQU-smica_2048_R3.00_full.fits |
 | Primary archive | ESA Planck Legacy Archive, https://pla.esac.esa.int/ (direct: https://pla.esac.esa.int/pla/aio/product-action?MAP.MAP_ID=COM_CMB_IQU-smica_2048_R3.00_full.fits — returned HTTP 503 on 2026-11-07, hence the mirror) |
 | Format | HEALPix Nside 2048, NESTED ordering, Galactic coordinates, units K_CMB, native resolution 5′ FWHM |
@@ -32,7 +32,7 @@ indistinguishable.
 ### Processing (`scripts/cmb_to_equirect.py`)
 
 1. Read `I_STOKES_INP`, reorder NESTED → RING, K_CMB → µK. Zero bad pixels found.
-2. Fit monopole + dipole (full sky, for the record): __MONO__.
+2. Fit monopole + dipole (full sky, for the record): monopole −0.010 µK, dipole 0.25 µK (SMICA already has both removed).
 3. Smooth with a Gaussian beam of **5′ FWHM** (on top of SMICA's native 5′, so ≈7′ effective) in
    harmonic space (`map2alm` lmax 6143, 1 Jacobi iteration → `almxfl` → `alm2map`), zeroing
    ℓ = 0 and ℓ = 1 in the same step (monopole and dipole removed).
@@ -40,14 +40,30 @@ indistinguishable.
    8192×4096 grid, box-averaged 2×2 → 4096×2048 (anti-aliasing). 2048×1024 and 1024×512 are
    box-downsampled from the 4096 float image.
 5. Quantise to 8 bits: ΔT −300 µK → 0, +300 µK → 255, linear, clipped
-   (`ΔT_µK = value / 255 × 600 − 300`, step 2.35 µK). __CLIP__
+   (`ΔT_µK = value / 255 × 600 − 300`, step 2.35 µK). 0.39 % of pixels clip (map range −508…+520 µK, rms 104 µK).
 6. Preview: ΔT/300 µK clipped to [−1, 1] through `CMB_STOPS` (parsed from `src/shared/color.ts`),
    interpolated in linear-light RGB like `cmbColor()`, sRGB-encoded, WebP q90.
-7. Self-checks (written to `cmb_meta.json` → `checks`): __CHECKS__
+7. Self-checks (written to `cmb_meta.json` → `checks`): 
+   - Orientation: the written 4096 PNG, decoded at 20,000 random sky directions with the documented
+     (l, b) → (u, v) formula, correlates 0.9989 with the HEALPix map (rms residual 5.3 µK); the
+     mirrored convention gives 0.03. The script exits non-zero if this check fails.
+   - CMB Cold Spot: mean ΔT in a 5° disc at (l, b) = (209°, −57°) is −109 µK, −3.1σ against 300
+     random |b| > 30° discs (none colder); the mirrored position (151°, −57°) is +27 µK. A scan of
+     5° discs below b = −30° finds a local minimum at (206.6°, −57.4°). Visually: lower right of
+     the image (u ≈ 0.92, 82 % down), as in the published Planck map; the inpainted Galactic plane
+     (image equator) shows no residual foreground band.
 
 Outputs:
 
-__FILES__
+| File | Size | Use |
+| --- | --- | --- |
+| `cmb_dT_4096x2048.png` | 4,568,270 B (4.6 MB) | 8-bit gray ΔT, high tier (under 6 MB, so no WebP variant was emitted) |
+| `cmb_dT_2048x1024.png` | 1,422,700 B (1.4 MB) | 8-bit gray ΔT, medium tier |
+| `cmb_preview_1024x512.webp` | 375,004 B | colour-mapped preview for HUD/stills |
+| `cmb_meta.json` | ~6 KB | encoding, orientation, provenance, checks, credit, licence |
+
+Rebuild: `scripts/.venv/bin/python scripts/cmb_to_equirect.py` (≈15 s once the FITS is cached;
+the first run downloads 2.0 GB). Outputs are byte-identical across re-runs.
 
 ### Orientation convention (also in `cmb_meta.json`)
 
@@ -143,7 +159,7 @@ The unauthenticated API answers 403, as expected; the first real run should star
 
 On screen (HUD, whenever the CMB map is visible — `recombination` and any still using it):
 
-> Cosmic microwave background: ESA and the Planck Collaboration (Planck 2018). Colour mapped.
+> Cosmic microwave background: ESA and the Planck Collaboration (Planck 2018 SMICA map, Planck Legacy Archive). Colour mapped.
 
 Short form where space is tight: **Credit: ESA, Planck Collaboration · colour mapped**
 
