@@ -65,8 +65,17 @@ export const LI7_TO_H_FINAL = 5e-10;
 export const HE3_TO_H_FINAL = 1.0e-5;
 
 // Recombination (HANDOFF §6.7).
-export const Z_RECOMBINATION_MID = 1100;
+/**
+ * Midpoint of the tanh x_e(z). HANDOFF says ≈1100; 1135 makes the Thomson optical depth reach 1 at z = 1090
+ * (last scattering), which 1100 does not (τ = 1 at z ≈ 1056). DECISIONS.md.
+ */
+export const Z_RECOMBINATION_MID = 1135;
 export const Z_RECOMBINATION_WIDTH = 80;
 export const Z_LAST_SCATTERING = 1090;
 /** Residual ionisation after recombination (freeze-out). */
 export const X_E_RESIDUAL = 2e-4;
+
+// Thomson scattering (for the optical depth to last scattering).
+export const SIGMA_THOMSON_M2 = 6.6524587321e-29;
+export const PROTON_MASS_KG = 1.67262192369e-27;
+export const G_NEWTON = 6.6743e-11;

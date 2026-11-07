@@ -150,6 +150,9 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
   import { $progress } from '../state/store.ts';
 
   document.documentElement.classList.add('js');
+  // ?clean=1 hides all HTML overlays (stills / OG capture); ?clean=hero keeps the title card.
+  const clean = new URLSearchParams(location.search).get('clean');
+  if (clean) document.documentElement.classList.add('clean', `clean-${clean}`);
   const driver = createScrollDriver(document.querySelector<HTMLElement>('[data-story]')!);
   (window as unknown as { __driver?: unknown }).__driver = driver;
 
@@ -170,6 +173,16 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
 </script>
 
 <style>
+  :global(html.clean .rail),
+  :global(html.clean .hud),
+  :global(html.clean .story),
+  :global(html.clean .credits),
+  :global(html.clean-1 .hero) {
+    display: none !important;
+  }
+  :global(html.clean .cosmos .veil) {
+    display: none;
+  }
   .hero {
     position: fixed;
     z-index: 10;

@@ -6,9 +6,8 @@ import { createGlobals, globalsAt } from '../physics/cosmology.ts';
 import { formatDuration, formatLookback, num, sci } from '../time/format.ts';
 import { CHAPTERS } from '../time/chapters.ts';
 import { ACCURACY_LABEL } from '../data/site.ts';
-import { GYR_S } from '../physics/constants.ts';
-
-const LATE_LOOKBACK_S = 5 * GYR_S;
+/** From the solar system on, the readout counts back from today. */
+const FIRST_LOOKBACK_CHAPTER = CHAPTERS.findIndex((c) => c.id === 'solarSystem');
 
 function fmtTemp(T: number): string {
   if (T >= 1e6) return `${sci(T)} K`;
@@ -56,7 +55,7 @@ export function initTimelineNav(root: HTMLElement): void {
     pending = false;
     const s = $time.get();
     marker.style.setProperty('--mp', String($progress.get()));
-    const late = s.lookback < LATE_LOOKBACK_S;
+    const late = s.chapterIndex >= FIRST_LOOKBACK_CHAPTER;
     when.textContent = late ? formatLookback(s.lookback) : formatDuration(s.t, 'long');
     globalsAt(s.t, g);
     const zPart = g.epoch === 'friedmann' ? `z ${fmtZ(g.z)}` : g.epoch === 'inflation' ? 'inflating' : 'before inflation';
@@ -85,7 +84,7 @@ export function initTimelineNav(root: HTMLElement): void {
     chapterTitle.textContent = title;
     chapterBtns.forEach((b, id) => b.setAttribute('aria-current', String(id === s.chapterId)));
     if (!first) {
-      const late = s.lookback < LATE_LOOKBACK_S;
+      const late = s.chapterIndex >= FIRST_LOOKBACK_CHAPTER;
       const c = CHAPTERS[s.chapterIndex]!;
       const at = late ? formatLookback(c.lookbackStart) : `${formatDuration(c.tStart, 'long')} after the Big Bang`;
       live.textContent = `Chapter ${s.chapterIndex + 1} of ${CHAPTERS.length}: ${title}. ${at}.`;
