@@ -13,6 +13,7 @@ interface Props {
 const { title = SITE.title, description = SITE.description, noindex = false } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const og = new URL(SITE.ogImage, Astro.site);
+const analytics = import.meta.env.PROD && !noindex;
 ---
 
 <!doctype html>
@@ -62,6 +63,17 @@ const og = new URL(SITE.ogImage, Astro.site);
       author: { '@type': 'Organization', name: SITE.author },
       publisher: { '@type': 'Organization', name: SITE.author },
     })} />
+    {
+      analytics && (
+        <>
+          <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${SITE.gaId}`} />
+          <script
+            is:inline
+            set:html={`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config","${SITE.gaId}");`}
+          />
+        </>
+      )
+    }
     <slot name="head" />
   </head>
   <body class="min-h-svh bg-void text-fog antialiased">

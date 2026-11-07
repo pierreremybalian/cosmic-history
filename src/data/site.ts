@@ -9,6 +9,8 @@ export const SITE = {
   ogImageAlt: 'Cosmic History: the title card over a glowing web of primordial filaments.',
   themeColor: '#020205',
   author: 'Balian Design',
+  /** Google Analytics 4 (the balian.dev property). Loaded in production builds only. */
+  gaId: 'G-MXMS8L0Z1H',
 };
 
 export const ACCURACY_LABEL = {

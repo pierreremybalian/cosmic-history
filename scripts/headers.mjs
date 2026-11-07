@@ -17,13 +17,14 @@ for (const f of walk(dist).filter((f) => f.endsWith('.html'))) {
 
 const csp = [
   "default-src 'self'",
-  // Cloudflare Web Analytics is injected at the edge on balian.dev (beacon script + reporting endpoint).
-  `script-src 'self' https://static.cloudflareinsights.com ${[...hashes].join(' ')}`,
+  // Cloudflare Web Analytics is injected at the edge on balian.dev (beacon script + reporting endpoint);
+  // Google Analytics 4 per Google's CSP guidance (gtag.js, collection endpoints, pixel fallback).
+  `script-src 'self' https://static.cloudflareinsights.com https://*.googletagmanager.com ${[...hashes].join(' ')}`,
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com",
   "font-src 'self'",
-  "connect-src 'self' https://cloudflareinsights.com",
+  "connect-src 'self' https://cloudflareinsights.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
