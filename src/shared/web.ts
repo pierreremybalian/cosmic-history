@@ -23,8 +23,8 @@ import { densityColorNode } from './color.ts';
 import type { RenderContext } from '../scenes/types.ts';
 import type { FloatUniform } from '../render/globals.ts';
 
-const mkColor = () => uniform(new Color());
-type ColorUniform = ReturnType<typeof mkColor>;
+const _mkColor = () => uniform(new Color());
+type ColorUniform = ReturnType<typeof _mkColor>;
 
 export interface CosmicWebOptions {
   /** Cap on particles drawn (also capped by the quality tier and the field). */

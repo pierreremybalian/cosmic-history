@@ -8,7 +8,7 @@ export const MYR_S = 1e6 * YEAR_S;
 export const GYR_S = 1e9 * YEAR_S;
 
 /** Megaparsec in metres (IAU 2015). */
-export const MPC_M = 3.0856775814913673e22;
+export const MPC_M = 3.085677581491367e22;
 
 /** Hubble constant, km/s/Mpc. */
 export const H0_KM_S_MPC = 67.4;

@@ -4,7 +4,7 @@ import astro from 'eslint-plugin-astro';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/', '.astro/', 'node_modules/', 'scripts/.venv/', 'public/'] },
+  { ignores: ['dist/', '.astro/', 'node_modules/', 'scripts/.venv/', 'scripts/cache/', 'public/', 'scratch/'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   ...astro.configs.recommended,

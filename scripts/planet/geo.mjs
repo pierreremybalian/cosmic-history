@@ -180,7 +180,12 @@ const channels = [];
 for (let p = 0; p < 8; p++) {
   const inside = new Uint8Array(W * H);
   let count = 0;
-  for (let i = 0; i < W * H; i++) if (plate[i] === p && land[i] >= 128) (inside[i] = 1), count++;
+  for (let i = 0; i < W * H; i++) {
+    if (plate[i] === p && land[i] >= 128) {
+      inside[i] = 1;
+      count++;
+    }
+  }
   const outside = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) outside[i] = inside[i] ? 0 : 1;
   const dIn = edt(inside); // distance from outside pixels to the plate
@@ -299,7 +304,14 @@ for (const sigma of [3, 8, 20, 48, 120]) {
 }
 const avg = [0, 0, 0];
 let na = 0;
-for (let i = 0; i < W * H; i++) if (mask[i] > 0) (avg[0] += filled[i * 3]), (avg[1] += filled[i * 3 + 1]), (avg[2] += filled[i * 3 + 2]), na++;
+for (let i = 0; i < W * H; i++) {
+  if (mask[i] > 0) {
+    avg[0] += filled[i * 3];
+    avg[1] += filled[i * 3 + 1];
+    avg[2] += filled[i * 3 + 2];
+    na++;
+  }
+}
 const out = Buffer.alloc(W * H * 3);
 for (let i = 0; i < W * H; i++)
   for (let c = 0; c < 3; c++) out[i * 3 + c] = Math.round(255 * Math.min(1, done[i] ? filled[i * 3 + c] : avg[c] / na));

@@ -135,7 +135,7 @@ export default (): CosmicScene => {
     range: sceneRange('darkAges'),
     accuracy: 'simulated',
     accuracyNote:
-      'Nothing here emits visible light, so dark matter is shown through a density colour map: its shapes grow from the measured primordial spectrum (Zel’dovich approximation), but the growth is compressed (shown ∝ D(a)^0.35) so the web is visible this early, and the afterglow’s fade into the infrared is slowed (brightness ∝ luminance^¼).',
+      'Dark matter is colour mapped; its shapes grow from the measured spectrum (Zel’dovich), with growth compressed (∝ D(a)^0.35) and the afterglow’s fade slowed.',
     colourMapped: true,
 
     async init(ctx: RenderContext) {

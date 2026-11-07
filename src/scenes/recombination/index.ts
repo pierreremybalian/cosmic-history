@@ -95,7 +95,9 @@ export const params = {
   fineAmp: 0.75,
   ridge: 0.9,
   warp: 0.15,
-  plasmaContrast: 2.4,
+  plasmaContrast: 2.1,
+  /** Extra exposure while the plasma look is on: the fog stays incandescent through the whole era. */
+  plasmaExposure: 1.7,
   plasmaVar: 1.15,
   ringMid: 1.4,
   ringFine: 3.1,
@@ -114,7 +116,7 @@ export const params = {
   waveRate: 0.09,
   waveRadius: 7,
   waveWidth: 0.06,
-  waveGain: 3,
+  waveGain: 1.5,
   /** Dark-matter wells: Ω_m range over which they deepen (equality at 0.5), amplitude. */
   dmOmega: [0.44, 0.68] as const,
   dmAmp: 1.6,
@@ -154,7 +156,7 @@ export const params = {
   moteCount: { low: 15000, medium: 40000, high: 70000 },
   moteRadius: 5,
   moteSize: 0.022,
-  moteGain: 2.2,
+  moteGain: 1.1,
   /** Photon random walk: count, shell, speed (world units/s), step = mean free path × this. */
   photonCount: { low: 60, medium: 100, high: 150 },
   photonTrail: 2,
@@ -357,7 +359,8 @@ export default (): CosmicScene => {
       su.logT.value = Math.log10(g.T) - P.redshiftDex * redshift;
       // White-hot at the start: an extra exposure boost that fades over the first third of the era.
       const hot = 1 + P.hotBoost * (1 - smoothstep(0, 0.35, sPh));
-      su.intensity.value = P.intensityEnd * Math.pow(Math.max(g.T, 1) / T_END_K, P.intensityPower) * hot;
+      su.intensity.value =
+        P.intensityEnd * Math.pow(Math.max(g.T, 1) / T_END_K, P.intensityPower) * hot * lerp(1, P.plasmaExposure, 1 - smoothstep(LOG_PLASMA0, LOG_PLASMA1, logt));
       su.physGain.value = 1 - 0.25 * redshift;
       su.mapMix.value = mapMix;
       su.cmbGain.value = P.cmbGain;

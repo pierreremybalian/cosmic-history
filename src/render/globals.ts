@@ -12,10 +12,10 @@ import {
 } from '../physics/blackbody.ts';
 import type { Globals } from '../physics/cosmology.ts';
 
-const mkFloat = () => uniform(0);
-const mkVec2 = () => uniform(new Vector2());
-export type FloatUniform = ReturnType<typeof mkFloat>;
-export type Vec2Uniform = ReturnType<typeof mkVec2>;
+const _mkFloat = () => uniform(0);
+const _mkVec2 = () => uniform(new Vector2());
+export type FloatUniform = ReturnType<typeof _mkFloat>;
+export type Vec2Uniform = ReturnType<typeof _mkVec2>;
 
 export interface GlobalUniforms {
   uLog10T: FloatUniform;

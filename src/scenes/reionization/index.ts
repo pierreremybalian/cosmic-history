@@ -172,7 +172,7 @@ export default (): CosmicScene => {
     range: sceneRange('reionization'),
     accuracy: 'simulated',
     accuracyNote:
-      'The neutral fraction follows the Planck 2018 reionization history (a tanh in redshift, widened slightly) and the ionised bubbles, Strömgren-scaled spheres around the galaxies of the same simulated web, are sized every frame to match it, but galaxies are far fewer and larger than real, the quasar and its jets are illustrative, and the neutral-hydrogen haze is colour mapped.',
+      'Neutral fraction follows Planck 2018 (widened); bubbles are calibrated to it, galaxies are fewer and larger, the quasar is illustrative and the haze colour mapped.',
     colourMapped: true,
 
     async init(ctx: RenderContext) {

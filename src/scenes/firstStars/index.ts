@@ -183,7 +183,7 @@ export default (): CosmicScene => {
     range: sceneRange('firstStars'),
     accuracy: 'modelled',
     accuracyNote:
-      'Population III stars (blackbody ≈ 100,000 K) ignite in the densest halos of the same simulated web, but only the 18 highest peaks in view host them, their few-million-year lives are stretched ~30×, nebulae and blast shells are drawn ~50–200× larger than life, dark matter and gas are colour mapped, and the nebula colours are the real emission lines at rest (in reality redshifted into the infrared).',
+      'Population III stars (~100,000 K) light the densest halos of the same web; only 18 are shown, their lives stretched ~30×, nebulae and blasts drawn 50–200× too large.',
     colourMapped: true,
 
     async init(ctx: RenderContext) {
