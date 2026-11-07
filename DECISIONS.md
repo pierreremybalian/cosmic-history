@@ -51,6 +51,8 @@ Non-obvious choices, deviations from HANDOFF.md, and why. Newest at the bottom o
 
 ## Data and licensing
 
+- **Local Group / Local Volume** positions in `src/scenes/now/localGroup.ts` come from McConnachie (2012) and Karachentsev (2013), rounded. The major objects (M31 position, inclination 77° and PA 38°, M33, LMC, SMC, M87/Virgo) were checked against the literature; dwarf entries are approximate.
+
 - **Planck CMB**: `COM_CMB_IQU-smica_2048_R3.00_full.fits` (IRSA mirror; the ESA archive returned 503), column `I_STOKES_INP`, 5′ smoothing, monopole/dipole removed, reprojected to equirectangular Galactic (l = 0 at u = 0.5, longitude increasing to the left, as published), 8-bit grayscale ΔT ∈ ±300 µK (2.35 µK steps; HANDOFF suggested 16-bit, but browsers decode PNGs to 8 bits per channel anyway). Orientation verified by correlation 0.9989 with the HEALPix map and by the Cold Spot at (209°, −57°). **Licence: CC BY-NC 3.0 IGO (ESA). Non-commercial: any ads, sales or sponsorship need permission from data.licences@esa.int before launch.** Credit is in the page footer and the HUD.
 - **IllustrisTNG**: `scripts/tng_to_points.py` defaults to TNG100-3-Dark (same initial conditions as TNG100-1-Dark, ~3 GB per snapshot instead of ~190 GB). Not run (needs an API key); the app does not depend on it.
 

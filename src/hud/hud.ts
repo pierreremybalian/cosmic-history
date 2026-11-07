@@ -15,6 +15,7 @@ const SHOW: Record<string, [string, number, number][]> = {
   now: [
     ['omega', 0, 0.55],
     ['cmb', 0.72, 1],
+    ['omega', 0.88, 1],
   ],
 };
 
