@@ -1,5 +1,439 @@
-// STUB — replaced by the real scene. Keeps the app runnable end to end.
-import { makePlaceholder } from '../_placeholder/index.ts';
-import { sceneRange } from '../sceneRange.ts';
+// recombination — the photon era and the release of the cosmic microwave background (HANDOFF §9.7). Anchor scene.
+//
+// Spans two chapters: `photon` (log, 20 min → 250 kyr) and `recombination` (linear, 250 → 380 kyr). `local`
+// restarts at the boundary, so everything here is driven by the globals g (t, z, T) and the ionisation
+// history: x_e(z) sets the fog's density, the Thomson transparency e^(−τ(z)) sets how much of the
+// last-scattering shell shows through it. Beats (see photon.mdx / recombination.mdx):
+//   photon 0.00–0.60  blue-white, opaque glowing fog of nuclei, electrons and light, cooling (blackbody LUT)
+//   photon 0.55–1.00  acoustic shells ring through the fog (beat 0.72)
+//   photon 0.93       matter–radiation equality (~50 kyr): dark-matter wells start to deepen (cool patches)
+//   rec    0.00–0.40  orange fog (≈3,600 K); Planck's pattern rises in the fog, blurred; Hα glints as atoms form
+//   rec    0.60–0.90  fog thins (x_e), the last-scattering shell shows through (transparency), pattern sharpens
+//   rec    0.80–1.00  colour map fades in, camera pulls back out of the shell; ends on the full CMB sphere
 
-export default () => makePlaceholder({ id: 'recombination', range: sceneRange('recombination') });
+import {
+  InstancedBufferAttribute,
+  Mesh,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Scene,
+  SphereGeometry,
+  Sprite,
+  Vector3,
+  type MeshBasicNodeMaterial,
+  type RenderTarget,
+  type SpriteNodeMaterial,
+  type WebGPURenderer,
+} from 'three/webgpu';
+import { ionizationFraction, transparency } from '../../physics/recombination.ts';
+import { KYR_S, X_E_RESIDUAL } from '../../physics/constants.ts';
+import { blackbodyRGB } from '../../physics/blackbody.ts';
+import { EMISSION_LINES_NM, lineColor } from '../../shared/color.ts';
+import { clamp01, easeInOutCubic, lerp, mulberry32, smoothstep } from '../../shared/math.ts';
+import { chapterById, timeInChapter } from '../../time/chapters.ts';
+import { createGlobals, globalsAt } from '../../physics/cosmology.ts';
+import { sceneRange } from '../sceneRange.ts';
+import type { Globals } from '../../physics/cosmology.ts';
+import type { CosmicScene, RenderContext } from '../types.ts';
+import { loadCmb, type CmbMap } from './assets.ts';
+import {
+  createGlintMaterial,
+  createGlintUniforms,
+  createPhotonMaterial,
+  createPhotonUniforms,
+  createSkyMaterial,
+  createSkyUniforms,
+  type GlintUniforms,
+  type PhotonUniforms,
+  type SkyUniforms,
+} from './shaders.ts';
+
+const photon = chapterById('photon')!;
+const recomb = chapterById('recombination')!;
+
+export const params = {
+  /** Radius of the last-scattering shell, world units. */
+  radius: 40,
+  sphereSegments: [192, 128] as const,
+  /** Fog mean free path at full ionisation, world units (sets how deep you see into the opaque fog). */
+  meanFreePath: 2.4,
+  /** Near-field density ∝ x_e^p (mean free path grows as electrons are captured). */
+  nearPower: 2,
+  /** March this many mean free paths (then the remainder is integrated analytically). */
+  marchMfp: 3.5,
+  /** Raymarch steps = quality.raymarchSteps × this, clamped. */
+  stepsScale: 0.75,
+  stepsMin: 24,
+  stepsMax: 64,
+  /** Transparency e^(−τ) → wall visibility: smoothstep(clear0, clear1, e^(−τ)). Completes by z ≈ 1100. */
+  clear0: 0.004,
+  clear1: 0.3,
+  /** Glow brightness: intensity = intensityEnd · (T / tEndK)^intensityPower (∝ T⁴ in reality; compressed). */
+  intensityEnd: 0.5,
+  intensityPower: 0.12,
+  /** Fluctuation look (exaggerated, see note). */
+  contrast: 1.5,
+  saturate: 0.9,
+  tempVar: 0.045,
+  densVarBase: 0.35,
+  densVarThin: 0.95,
+  /** Primordial field box size, world units: grows over the photon era (structures grow). */
+  boxEarly: 16,
+  /** Fine directional mottle (granular plasma look), replaced by the Planck pattern as it rises. */
+  mottleAmp: 0.45,
+  mottleFreqEarly: 22,
+  mottleFreqLate: 10,
+  boxLate: 34,
+  driftSpeed: [0.0021, 0.0013, -0.0017] as const,
+  /** Planck pattern in the fog: weight ramps between these times (kyr); blur in the fog (radians). */
+  cmbFromKyr: 55,
+  cmbToKyr: 300,
+  blurFog: 0.09,
+  /** Smallest angular blur (radians): keeps the final sphere free of sub-pixel speckle. */
+  blurMin: 0.004,
+  /** Acoustic shells. */
+  shellCount: { low: 10, medium: 16, high: 24 },
+  shellSpread: 9,
+  waveRate: 0.09,
+  waveRadius: 7,
+  waveWidth: 0.07,
+  waveGain: 7,
+  /** Dark-matter wells: Ω_m range over which they deepen (equality at 0.5), amplitude. */
+  dmOmega: [0.44, 0.68] as const,
+  dmAmp: 0.85,
+  dmScale: 0.55,
+  /** Camera. */
+  fovFog: 62,
+  fovEnd: 48,
+  yawStart: 0.85,
+  swayAmp: 0.05,
+  driftAmp: 0.22,
+  pullStart: 0.68,
+  pullEnd: 1.0,
+  pullExp: 1.6,
+  endDistance: 3.25, // × radius
+  endElevation: 0.06, // rad
+  orbitSpeed: 0.018, // rad/s once calm
+  /** Reveal (recombination-chapter progress from t). */
+  mapFrom: 0.8,
+  mapTo: 0.93,
+  /** The sweep starts this far (degrees of ecliptic longitude) before the Galactic Centre, the first view. */
+  sweepLead: 150,
+  scanGain: 0.35,
+  cmbGain: 1.15,
+  mapGain: 0.52,
+  redshiftDex: 0.1,
+  rimFrom: 0.88,
+  rimGain: 0.6,
+  /** Hα glints. */
+  glintCount: { low: 1200, medium: 2500, high: 5000 },
+  glintShell: [1.2, 16] as const,
+  glintSize: 0.06,
+  /** Photon random walk: count, shell, speed (world units/s), step = mean free path × this. */
+  photonCount: { low: 160, medium: 240, high: 360 },
+  photonTrail: 2,
+  photonShell: [1.4, 5.5] as const,
+  photonSpeed: 1.5,
+  photonStep: 0.5,
+  photonStepFree: 1.4,
+  photonWidth: 0.035,
+  photonGain: 7,
+};
+
+const FOG_NOTE =
+  'Fog colour, cooling and clearing follow the computed temperature, free-electron fraction and optical depth; its structure, sound waves and brightness are illustrative, with fluctuations shown about 10,000× stronger than the real few parts in 100,000.';
+const MAP_NOTE =
+  'The sphere is the Planck 2018 SMICA map (ESA and the Planck Collaboration), colour mapped ±300 µK; the fog before it is a visual model driven by the computed temperature and free-electron fraction.';
+const STANDIN_NOTE =
+  'The Planck map could not be loaded, so the sphere shows a procedural stand-in with CMB-like statistics; the fog is a visual model driven by the computed temperature and free-electron fraction.';
+
+/** Points uniform in volume between radii r0 and r1; w = random 0–1. */
+function shellSeeds(n: number, [r0, r1]: readonly [number, number], seed: number): InstancedBufferAttribute {
+  const rand = mulberry32(seed);
+  const arr = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const u = rand() * 2 - 1;
+    const ph = rand() * Math.PI * 2;
+    const s = Math.sqrt(1 - u * u);
+    const r = Math.cbrt(lerp(r0 ** 3, r1 ** 3, rand()));
+    arr[i * 4] = s * Math.cos(ph) * r;
+    arr[i * 4 + 1] = u * r;
+    arr[i * 4 + 2] = s * Math.sin(ph) * r;
+    arr[i * 4 + 3] = rand();
+  }
+  return new InstancedBufferAttribute(arr, 4);
+}
+
+const DEV_CHAPTER =
+  import.meta.env.DEV && typeof location !== 'undefined' && location.pathname.startsWith('/dev/scenes')
+    ? (chapterById(new URLSearchParams(location.search).get('chapter') ?? '') ?? null)
+    : null;
+const gDev = createGlobals();
+
+// Ecliptic frame in Galactic coordinates (J2000; IAU): north ecliptic pole and the vernal equinox (λ = 0).
+const DEG = Math.PI / 180;
+const NEP_LB = [96.3843, 29.8114] as const;
+const EQUINOX_LB = [96.3373, -60.1886] as const;
+/** Galactic (l, b) in degrees → world direction (GC at −Z, NGP at +Y, l = 90° at −X; cmb_meta.json). */
+function galToWorld([l, b]: readonly [number, number], out: Vector3): Vector3 {
+  const xg = Math.cos(b * DEG) * Math.cos(l * DEG);
+  const yg = Math.cos(b * DEG) * Math.sin(l * DEG);
+  const zg = Math.sin(b * DEG);
+  return out.set(-yg, zg, -xg);
+}
+const ECL_X = galToWorld(EQUINOX_LB, new Vector3());
+const ECL_Z = galToWorld(NEP_LB, new Vector3());
+const ECL_Y = new Vector3().crossVectors(ECL_Z, ECL_X).normalize();
+const GC_WORLD = galToWorld([0, 0], new Vector3());
+const LAMBDA_GC = Math.atan2(GC_WORLD.dot(ECL_Y), GC_WORLD.dot(ECL_X));
+
+const LOG_T0 = Math.log10(photon.tStart);
+const LOG_T1 = Math.log10(photon.tEnd);
+const LOG_CMB0 = Math.log10(params.cmbFromKyr * KYR_S);
+const LOG_CMB1 = Math.log10(params.cmbToKyr * KYR_S);
+const T_END_K = 2932; // only a normalisation for brightness (≈ T at the chapter end; brightness ∝ (T/T_END)^p)
+
+export default (): CosmicScene => {
+  let renderer: WebGPURenderer;
+  let scene: Scene;
+  let camera: PerspectiveCamera;
+  let sky: Mesh;
+  let skyMat: MeshBasicNodeMaterial;
+  let glints: Sprite;
+  let glintMat: SpriteNodeMaterial;
+  let glintSeeds: InstancedBufferAttribute;
+  let photons: Mesh;
+  let photonMat: MeshBasicNodeMaterial;
+  let photonSeeds: InstancedBufferAttribute;
+  let cmb: CmbMap | null = null;
+  const su: SkyUniforms = createSkyUniforms();
+  const gu: GlintUniforms = createGlintUniforms();
+  const pu: PhotonUniforms = createPhotonUniforms();
+  let photonClock = 0;
+  const rgb: [number, number, number] = [0, 0, 0];
+  let waveClock = 0;
+  let glintClock = 0;
+  let orbit = 0;
+  const drift = [0, 0, 0];
+
+  const self: CosmicScene = {
+    id: 'recombination',
+    range: sceneRange('recombination'),
+    accuracy: 'measured',
+    accuracyNote: FOG_NOTE,
+    colourMapped: false,
+
+    async init(ctx: RenderContext) {
+      renderer = ctx.renderer;
+      await ctx.field.ready;
+      cmb = await loadCmb(ctx);
+      scene = new Scene();
+      camera = new PerspectiveCamera(params.fovFog, 1, 0.05, params.radius * 12);
+
+      const steps = Math.round(
+        Math.min(params.stepsMax, Math.max(params.stepsMin, ctx.quality.raymarchSteps * params.stepsScale)),
+      );
+      skyMat = createSkyMaterial(
+        {
+          lut: ctx.globals.lut,
+          field: ctx.field.textures().density,
+          cmb: cmb.texture,
+          convention: cmb.convention,
+          radius: params.radius,
+          steps,
+          shellCount: params.shellCount[ctx.quality.name],
+          shellSpread: params.shellSpread,
+          dmScale: params.dmScale,
+        },
+        su,
+      );
+      sky = new Mesh(new SphereGeometry(params.radius, params.sphereSegments[0], params.sphereSegments[1]), skyMat);
+      sky.frustumCulled = false;
+      scene.add(sky);
+
+      // Hα glints and photons in shells around the observer.
+      const nG = params.glintCount[ctx.quality.name];
+      glintSeeds = shellSeeds(nG, params.glintShell, 1135);
+      const ha = lineColor(EMISSION_LINES_NM.hAlpha);
+      gu.colour.value.set(ha.x, ha.y, ha.z);
+      glintMat = createGlintMaterial(gu, glintSeeds, params.glintSize);
+      glints = new Sprite(glintMat);
+      glints.count = nG;
+      glints.frustumCulled = false;
+      glints.renderOrder = 1;
+      scene.add(glints);
+
+      const nP = params.photonCount[ctx.quality.name];
+      const M = params.photonTrail;
+      const homes = shellSeeds(nP, params.photonShell, 1090).array as Float32Array;
+      const segs = new Float32Array(nP * M * 4);
+      for (let i = 0; i < nP; i++)
+        for (let m = 0; m < M; m++) {
+          const o = (i * M + m) * 4;
+          segs[o] = homes[i * 4]!;
+          segs[o + 1] = homes[i * 4 + 1]!;
+          segs[o + 2] = homes[i * 4 + 2]!;
+          segs[o + 3] = m + Math.min(homes[i * 4 + 3]!, 0.999);
+        }
+      photonSeeds = new InstancedBufferAttribute(segs, 4);
+      photonMat = createPhotonMaterial(pu, photonSeeds, M);
+      photons = new Mesh(new PlaneGeometry(1, 1), photonMat);
+      photons.count = nP * M;
+      photons.frustumCulled = false;
+      photons.renderOrder = 2;
+      scene.add(photons);
+
+      await renderer.compileAsync(scene, camera);
+    },
+
+    update(local: number, gIn: Globals, dt: number, elapsed: number) {
+      const P = params;
+      // Dev harness only: /dev/scenes/?scene=recombination&chapter=recombination maps `local` to that chapter.
+      const g = DEV_CHAPTER ? globalsAt(timeInChapter(DEV_CHAPTER, local).t, gDev) : gIn;
+      const R = P.radius;
+      // Scene clocks from g (local restarts at the photon → recombination boundary).
+      const logt = g.log10t;
+      const sPh = clamp01((logt - LOG_T0) / (LOG_T1 - LOG_T0));
+      const uRec = clamp01((g.t - recomb.tStart) / (recomb.tEnd - recomb.tStart));
+      const xe = ionizationFraction(g.z);
+      const tr = transparency(g.z);
+      const clear = smoothstep(P.clear0, P.clear1, tr);
+      const thin = smoothstep(0, 1, (1 - xe) / (1 - 0.5)); // 0 while fully ionised → 1 at x_e = 0.5
+
+      // Fog extinction: near field from x_e, far field such that the shell's visibility = clear.
+      const sigmaNear = Math.pow(Math.max(xe, X_E_RESIDUAL), P.nearPower) / P.meanFreePath;
+      const sigmaWall = clear >= 1 ? 0 : -Math.log(Math.max(clear, 1e-9)) / R;
+      const sigma = Math.min(sigmaNear, sigmaWall);
+      su.sigma.value = sigma;
+      su.fogOn.value = sigma * R > 0.002 ? 1 : 0;
+      su.marchMax.value = Math.min(2 * R, P.marchMfp / Math.max(sigma, 1e-6));
+      su.densVar.value = lerp(P.densVarBase, P.densVarThin, thin);
+
+      // Colour and brightness from T (blackbody LUT); the reveal redshifts the physical glow away.
+      // Colour map laid down by a Planck-style sweep over [mapFrom, mapTo].
+      const sweepP = clamp01((uRec - P.mapFrom) / (P.mapTo - P.mapFrom));
+      const mapMix = uRec >= P.mapFrom ? 1 : 0;
+      su.sweep.value = sweepP * Math.PI * 2;
+      su.scanGain.value = P.scanGain;
+      const redshift = smoothstep(P.mapFrom, P.mapTo + 0.02, uRec);
+      su.logT.value = Math.log10(g.T) - P.redshiftDex * redshift;
+      su.intensity.value = P.intensityEnd * Math.pow(Math.max(g.T, 1) / T_END_K, P.intensityPower);
+      su.physGain.value = 1 - 0.25 * redshift;
+      su.mapMix.value = mapMix;
+      su.cmbGain.value = P.cmbGain;
+      su.mapGain.value = P.mapGain;
+      su.contrast.value = P.contrast;
+      su.tempVar.value = P.tempVar;
+      su.saturate.value = P.saturate;
+
+      // Fluctuation sources.
+      const cmbW = smoothstep(LOG_CMB0, LOG_CMB1, logt);
+      su.cmbW.value = cmbW;
+      su.noiseW.value = (1 - 0.8 * cmbW) * (1 - 0.8 * clear);
+      su.eclX.value.copy(ECL_X);
+      su.eclY.value.copy(ECL_Y);
+      su.sweepStart.value = LAMBDA_GC - P.sweepLead * DEG;
+      su.mottle.value = P.mottleAmp * (1 - cmbW) * (1 - clear);
+      su.mottleFreq.value = P.mottleFreqEarly * Math.pow(P.mottleFreqLate / P.mottleFreqEarly, sPh);
+      su.mottleTime.value = elapsed * 0.02;
+      su.blur.value = P.blurFog * Math.pow(1 - clear, 1.5) + P.blurMin;
+      const box = P.boxEarly * Math.pow(P.boxLate / P.boxEarly, sPh);
+      su.freq.value = 1 / box;
+      const grow = box / P.boxLate;
+      for (let k = 0; k < 3; k++) drift[k]! += dt * P.driftSpeed[k]!;
+      su.drift.value.set(drift[0]!, drift[1]!, drift[2]!);
+      // Sound speed collapses as photons decouple from baryons: shells slow and freeze.
+      waveClock += dt * P.waveRate * xe * xe * (1 - clear);
+      su.waveClock.value = waveClock;
+      su.waveAmp.value = P.waveGain * (0.2 + 0.8 * smoothstep(0.45, 0.7, sPh)) * (1 - 0.6 * smoothstep(0.85, 1, sPh)) * (1 - smoothstep(0.1, 0.5, uRec));
+      su.waveR.value = P.waveRadius * (0.55 + 0.45 * grow);
+      su.waveW.value = P.waveWidth * (0.6 + 0.4 * grow);
+      su.dm.value = P.dmAmp * smoothstep(P.dmOmega[0], P.dmOmega[1], g.omega.matter) * (1 - 0.85 * cmbW);
+      su.rim.value = P.rimGain * smoothstep(P.rimFrom, 1, uRec);
+
+      // Hα glints: normalised recombination rate dx_e/dz (tanh model peaks at 1/(2w)).
+      const dz = 4;
+      const rate = (ionizationFraction(g.z + dz) - ionizationFraction(g.z - dz)) / (2 * dz);
+      const rateNorm = clamp01(rate * 2 * 80);
+      gu.amount.value = Math.sqrt(rateNorm) * 0.6 * (1 - smoothstep(0.72, 0.86, uRec)) * (uRec > 0 ? 1 : 0);
+      gu.sigma.value = sigma;
+      glintClock += dt;
+      gu.clock.value = glintClock;
+
+      // Photons: step = mean free path (∝ 1/x_e², × the clearing), constant speed; they fade once free.
+      const mfp = 1 / Math.max(sigma, 1e-6);
+      const step = Math.min(P.photonStepFree, P.photonStep * Math.min(mfp / P.meanFreePath, 1e3));
+      photonClock += (dt * P.photonSpeed) / step;
+      pu.clock.value = photonClock;
+      pu.step.value = step;
+      pu.width.value = P.photonWidth;
+      pu.sigma.value = sigma;
+      const pcol = blackbodyRGB(g.T, rgb);
+      // Most visible around the "light can't get far" beat; their steps lengthen as the fog thins, then they fade.
+      const pVis = 0.3 + 0.7 * smoothstep(0.08, 0.22, sPh) * (1 - smoothstep(0.5, 0.65, sPh));
+      const pI = su.intensity.value * P.photonGain * pVis * (1 - smoothstep(0.5, 0.75, uRec));
+      pu.colour.value.set(pcol[0] * pI, pcol[1] * pI, pcol[2] * pI);
+      pu.amount.value = 1;
+
+      // Camera: at the centre of the shell while the fog lasts, slowly turning; then a pull-back out of it.
+      const sceneP = 0.5 * sPh + 0.5 * uRec;
+      const calmFog = 1 - smoothstep(0.55, 0.72, uRec);
+      const yaw = P.yawStart * (1 - smoothstep(0, 0.78, sceneP)) + P.swayAmp * calmFog * Math.sin(elapsed * 0.07);
+      const pitch = 0.08 * (1 - smoothstep(0.2, 0.78, sceneP)) + P.swayAmp * 0.6 * calmFog * Math.sin(elapsed * 0.051 + 1.3);
+      // Pull-back: exponential in an eased parameter, so it creeps away from the centre while the map develops,
+      // leaves the shell around rec 0.89 and settles (ease-out) on the full sphere at the chapter end.
+      const pull = easeInOutCubic(clamp01((uRec - P.pullStart) / (P.pullEnd - P.pullStart)));
+      const pullCurve = (Math.exp(P.pullExp * pull) - 1) / (Math.exp(P.pullExp) - 1);
+      const dist = pullCurve * P.endDistance * R;
+      if (uRec > 0.9) orbit += dt * P.orbitSpeed * smoothstep(0.9, 1, uRec);
+      const elev = P.endElevation * pullCurve;
+      const ox = P.driftAmp * calmFog * Math.sin(elapsed * 0.043);
+      const oy = P.driftAmp * calmFog * Math.sin(elapsed * 0.037 + 2.1);
+      // Position: orbit around Y at distance `dist`, looking at the centre (or along yaw/pitch inside).
+      const ca = Math.cos(orbit);
+      const sa = Math.sin(orbit);
+      const px = sa * Math.cos(elev) * dist + ox;
+      const py = Math.sin(elev) * dist + oy;
+      const pz = ca * Math.cos(elev) * dist;
+      camera.position.set(px, py, pz);
+      // Forward: −Z rotated by yaw/pitch (inside) and by the orbit (outside); blends naturally as yaw → 0.
+      const fx = -Math.sin(yaw + orbit) * Math.cos(pitch - elev);
+      const fy = Math.sin(pitch - elev);
+      const fz = -Math.cos(yaw + orbit) * Math.cos(pitch - elev);
+      camera.lookAt(px + fx, py + fy, pz + fz);
+      const fov = lerp(P.fovFog, P.fovEnd, pullCurve);
+      if (Math.abs(camera.fov - fov) > 1e-4) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+      }
+
+      // Colour map shown → label it and credit Planck (§13.4, §13.5).
+      const mapped = sweepP > 0.3;
+      if (mapped !== self.colourMapped) {
+        self.colourMapped = mapped;
+        self.accuracyNote = mapped ? (cmb?.real === false ? STANDIN_NOTE : MAP_NOTE) : FOG_NOTE;
+      }
+    },
+
+    render(target: RenderTarget) {
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+    },
+
+    resize(width: number, height: number) {
+      camera.aspect = width / Math.max(1, height);
+      camera.updateProjectionMatrix();
+    },
+
+    dispose() {
+      sky?.geometry.dispose();
+      skyMat?.dispose();
+      glintMat?.dispose();
+      photons?.geometry.dispose();
+      photonMat?.dispose();
+      cmb?.release();
+      cmb = null;
+    },
+  };
+  return self;
+};
