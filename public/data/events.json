@@ -1,0 +1,786 @@
+[
+ {
+  "id": "planck-time",
+  "name": "Planck time",
+  "category": "Spacetime & forces",
+  "label": "5.4×10⁻⁴⁴ s",
+  "certainty": "Theoretical limit",
+  "summary": "Earliest moment current physics can describe. Gravity is thought to split from a single unified force; spacetime behaves classically from here on.",
+  "sources": [
+   {
+    "label": "Planck units (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Planck_units"
+   }
+  ],
+  "t_seconds": {
+   "best": 5.391247e-44,
+   "min": 5.391247e-44,
+   "max": 5.391247e-44
+  }
+ },
+ {
+  "id": "strong-force-separates",
+  "name": "Strong force separates",
+  "category": "Spacetime & forces",
+  "label": "~10⁻³⁶ s",
+  "certainty": "Theoretical",
+  "summary": "End of grand unification: the strong nuclear force splits from the electroweak force.",
+  "range_note": "Depends on the unknown grand-unification energy scale; widened.",
+  "sources": [
+   {
+    "label": "Grand unification epoch (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Grand_unification_epoch"
+   }
+  ],
+  "t_seconds": {
+   "best": 1e-36,
+   "min": 1e-39,
+   "max": 1e-34
+  }
+ },
+ {
+  "id": "cosmic-inflation",
+  "name": "Cosmic inflation",
+  "category": "Dark sector & expansion",
+  "label": "~10⁻³⁶–10⁻³² s",
+  "certainty": "Strong indirect evidence",
+  "summary": "Space expands by at least a factor of 10²⁶. Quantum fluctuations are stretched into the density ripples that later seed galaxies.",
+  "range_note": "Energy scale of inflation is only bounded from above; timing is model-dependent.",
+  "sources": [
+   {
+    "label": "Guth 1981, Inflationary universe",
+    "url": "https://doi.org/10.1103/PhysRevD.23.347"
+   },
+   {
+    "label": "Planck 2018 results X: constraints on inflation",
+    "url": "https://arxiv.org/abs/1807.06211"
+   }
+  ],
+  "t_seconds": {
+   "best": 1e-35,
+   "min": 1e-36,
+   "max": 1e-32
+  }
+ },
+ {
+  "id": "reheating",
+  "name": "Reheating fills space with particles",
+  "category": "Particles",
+  "label": "~10⁻³² s",
+  "certainty": "Theoretical",
+  "summary": "Inflation ends; the inflaton field's energy converts into a hot soup of particles and radiation.",
+  "range_note": "Reheating temperature is unknown over many orders of magnitude; widened.",
+  "sources": [
+   {
+    "label": "Reheating (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Reheating"
+   }
+  ],
+  "t_seconds": {
+   "best": 1e-32,
+   "min": 1e-36,
+   "max": 1e-30
+  }
+ },
+ {
+  "id": "baryogenesis",
+  "name": "Matter beats antimatter",
+  "category": "Particles",
+  "label": "by ~10⁻¹² s",
+  "certainty": "Unknown mechanism",
+  "summary": "Baryogenesis leaves a tiny excess of matter — about one extra particle per billion pairs. Why is still unsolved.",
+  "range_note": "Mechanism unknown; could occur any time between reheating and the electroweak transition.",
+  "sources": [
+   {
+    "label": "Baryogenesis (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Baryogenesis"
+   },
+   {
+    "label": "Canetti, Drewes & Shaposhnikov 2012, Matter and antimatter in the universe",
+    "url": "https://arxiv.org/abs/1204.4186"
+   }
+  ],
+  "t_seconds": {
+   "best": 5e-13,
+   "min": 1e-32,
+   "max": 1e-11
+  }
+ },
+ {
+  "id": "higgs",
+  "name": "Higgs field switches on",
+  "category": "Spacetime & forces",
+  "label": "~10⁻¹² s",
+  "certainty": "Well supported (LHC)",
+  "summary": "Electroweak symmetry breaking: electromagnetism and the weak force separate; quarks, electrons and W/Z bosons gain mass.",
+  "sources": [
+   {
+    "label": "ATLAS 2012, Higgs boson observation",
+    "url": "https://arxiv.org/abs/1207.7214"
+   },
+   {
+    "label": "CMS 2012, Higgs boson observation",
+    "url": "https://arxiv.org/abs/1207.7235"
+   },
+   {
+    "label": "D'Onofrio & Rummukainen 2016, Standard Model cross-over on the lattice",
+    "url": "https://arxiv.org/abs/1508.07161"
+   }
+  ],
+  "t_seconds": {
+   "best": 1e-12,
+   "min": 5e-13,
+   "max": 2e-11
+  }
+ },
+ {
+  "id": "dark-matter-freeze-out",
+  "name": "Dark matter freezes out",
+  "category": "Dark sector & expansion",
+  "label": "~10⁻⁸ s (if WIMP)",
+  "certainty": "Model-dependent",
+  "summary": "If dark matter is a heavy particle, its abundance locks in here. Its identity is still unknown.",
+  "range_note": "Only meaningful for thermal-relic dark matter; the mass is unknown.",
+  "sources": [
+   {
+    "label": "Weakly interacting massive particle (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Weakly_interacting_massive_particle"
+   }
+  ],
+  "t_seconds": {
+   "best": 4e-8,
+   "min": 1e-10,
+   "max": 0.000001
+  }
+ },
+ {
+  "id": "confinement",
+  "name": "Quarks bind into protons and neutrons",
+  "category": "Particles",
+  "label": "~1 µs",
+  "certainty": "Well supported",
+  "summary": "Quark–gluon plasma cools enough for quarks to be confined inside hadrons.",
+  "sources": [
+   {
+    "label": "HotQCD 2019, Chiral crossover in QCD",
+    "url": "https://arxiv.org/abs/1812.08235"
+   },
+   {
+    "label": "Hadron epoch (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Hadron_epoch"
+   }
+  ],
+  "t_seconds": {
+   "best": 0.000001,
+   "min": 0.000001,
+   "max": 0.00003
+  }
+ },
+ {
+  "id": "hadron-annihilation",
+  "name": "Protons and antiprotons annihilate",
+  "category": "Particles",
+  "label": "~1 ms",
+  "certainty": "Well supported",
+  "summary": "Nearly all hadrons annihilate with their antimatter partners, leaving the small matter excess behind.",
+  "sources": [
+   {
+    "label": "Hadron epoch (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Hadron_epoch"
+   }
+  ],
+  "t_seconds": {
+   "best": 0.001,
+   "min": 0.0001,
+   "max": 0.01
+  }
+ },
+ {
+  "id": "neutrino-decoupling",
+  "name": "Neutrinos decouple",
+  "category": "Particles",
+  "label": "~1 s",
+  "certainty": "Well supported",
+  "summary": "Neutrinos stop interacting and stream freely — the cosmic neutrino background.",
+  "sources": [
+   {
+    "label": "Cosmic neutrino background (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Cosmic_neutrino_background"
+   }
+  ],
+  "t_seconds": {
+   "best": 1,
+   "min": 0.1,
+   "max": 2
+  }
+ },
+ {
+  "id": "ee-annihilation",
+  "name": "Electrons and positrons annihilate",
+  "category": "Particles",
+  "label": "~10 s",
+  "certainty": "Well supported",
+  "summary": "Most electrons annihilate with positrons, heating the photons; the leftover electrons are all we have today.",
+  "sources": [
+   {
+    "label": "Lepton epoch (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Lepton_epoch"
+   }
+  ],
+  "t_seconds": {
+   "best": 10,
+   "min": 1,
+   "max": 200
+  }
+ },
+ {
+  "id": "bbn",
+  "name": "First nuclei: H, He, Li",
+  "category": "Elements",
+  "label": "3–20 min",
+  "certainty": "Precisely measured",
+  "summary": "Big Bang nucleosynthesis: about 75% hydrogen, 25% helium by mass, a trace of lithium. Every other element comes later.",
+  "sources": [
+   {
+    "label": "Fields, Olive, Yeh & Young 2020, BBN after Planck",
+    "url": "https://arxiv.org/abs/1912.01132"
+   }
+  ],
+  "t_seconds": {
+   "best": 180,
+   "min": 180,
+   "max": 1200
+  }
+ },
+ {
+  "id": "matter-domination",
+  "name": "Matter starts to dominate",
+  "category": "Dark sector & expansion",
+  "label": "~50,000 yr",
+  "certainty": "Precisely measured",
+  "summary": "Matter (mostly dark matter) outweighs radiation; dark-matter clumps begin to grow, building the scaffolding for galaxies.",
+  "sources": [
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   }
+  ],
+  "t_seconds": {
+   "best": 1589594301988.357,
+   "min": 1510114586888.939,
+   "max": 1669074017087.775
+  }
+ },
+ {
+  "id": "recombination",
+  "name": "Atoms form; CMB released",
+  "category": "Particles",
+  "label": "~380,000 yr",
+  "certainty": "Precisely measured",
+  "summary": "Recombination: electrons join nuclei, the universe turns transparent, and the light we now see as the cosmic microwave background escapes.",
+  "sources": [
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   },
+   {
+    "label": "Recombination (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Recombination_(cosmology)"
+   }
+  ],
+  "t_seconds": {
+   "best": 11714483354406.697,
+   "min": 11535946203088.523,
+   "max": 11897361399614.46
+  }
+ },
+ {
+  "id": "dark-ages",
+  "name": "Dark ages begin",
+  "category": "Structure",
+  "label": "~380,000 yr",
+  "certainty": "Well supported",
+  "summary": "No stars yet — only cooling neutral gas and growing dark-matter halos.",
+  "sources": [
+   {
+    "label": "Chronology of the universe: Dark Ages (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Chronology_of_the_universe#Dark_Ages_and_large-scale_structure_emergence"
+   }
+  ],
+  "t_seconds": {
+   "best": 11732573462028.61,
+   "min": 11732573462028.61,
+   "max": 13535552775330.09
+  }
+ },
+ {
+  "id": "first-stars",
+  "name": "First stars ignite",
+  "category": "Structure",
+  "label": "~100–200 Myr",
+  "certainty": "Indirect evidence",
+  "summary": "Massive Population III stars form in the first gas clouds — the first stellar nebulae.",
+  "sources": [
+   {
+    "label": "Bromm 2013, Formation of the first stars",
+    "url": "https://arxiv.org/abs/1305.5178"
+   }
+  ],
+  "t_seconds": {
+   "best": 4733640000000000,
+   "min": 3155760000000000,
+   "max": 7889400000000000
+  }
+ },
+ {
+  "id": "first-heavy-elements",
+  "name": "First heavy elements forged",
+  "category": "Elements",
+  "label": "~200 Myr",
+  "certainty": "Indirect evidence",
+  "summary": "First stars fuse carbon, oxygen and iron, then explode as supernovae, seeding space with heavier elements.",
+  "sources": [
+   {
+    "label": "Population III star (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Population_III_star"
+   }
+  ],
+  "t_seconds": {
+   "best": 6311520000000000,
+   "min": 4733640000000000,
+   "max": 12623040000000000
+  }
+ },
+ {
+  "id": "earliest-galaxies",
+  "name": "Earliest galaxies seen",
+  "category": "Structure",
+  "label": "~290 Myr",
+  "certainty": "Observed (JWST)",
+  "summary": "The most distant confirmed galaxies, observed by the James Webb Space Telescope.",
+  "sources": [
+   {
+    "label": "Carniani et al. 2024, JADES-GS-z14-0",
+    "url": "https://arxiv.org/abs/2405.18485"
+   }
+  ],
+  "t_seconds": {
+   "best": 9012388857724758,
+   "min": 8855273178249847,
+   "max": 10321518986317922
+  }
+ },
+ {
+  "id": "first-smbh",
+  "name": "First supermassive black holes",
+  "category": "Structure",
+  "label": "~400–700 Myr",
+  "certainty": "Observed",
+  "summary": "Black holes millions of times the Sun's mass already power quasars and active galaxies.",
+  "sources": [
+   {
+    "label": "Bogdán et al. 2023, an X-ray quasar at z ≈ 10 (UHZ1)",
+    "url": "https://arxiv.org/abs/2305.15458"
+   },
+   {
+    "label": "Wang et al. 2021, a luminous quasar at z = 7.64",
+    "url": "https://arxiv.org/abs/2101.03179"
+   }
+  ],
+  "t_seconds": {
+   "best": 14694378838223792,
+   "min": 12623040000000000,
+   "max": 23937225731519100
+  }
+ },
+ {
+  "id": "r-process",
+  "name": "Gold and uranium from neutron-star mergers",
+  "category": "Elements",
+  "label": "~0.5 Gyr onward",
+  "certainty": "Model-dependent",
+  "summary": "Rapid neutron capture in mergers and rare supernovae makes the heaviest elements.",
+  "sources": [
+   {
+    "label": "Kasen et al. 2017, r-process in the GW170817 kilonova",
+    "url": "https://arxiv.org/abs/1710.05463"
+   }
+  ],
+  "t_seconds": {
+   "best": 15778800000000000,
+   "min": 9467280000000000,
+   "max": 31557600000000000
+  }
+ },
+ {
+  "id": "milky-way",
+  "name": "Milky Way begins assembling",
+  "category": "Structure",
+  "label": "~0.6 Gyr",
+  "certainty": "Estimated",
+  "summary": "Our galaxy's oldest stars date from here; it grows by swallowing smaller galaxies.",
+  "sources": [
+   {
+    "label": "Xiang & Rix 2022, a time-resolved picture of our Milky Way",
+    "url": "https://arxiv.org/abs/2203.12110"
+   }
+  ],
+  "t_seconds": {
+   "best": 18934560000000000,
+   "min": 12623040000000000,
+   "max": 47336400000000000
+  }
+ },
+ {
+  "id": "reionization-complete",
+  "name": "Reionization complete",
+  "category": "Structure",
+  "label": "~1 Gyr",
+  "certainty": "Observed",
+  "summary": "Ultraviolet light from stars and quasars has ionized nearly all the hydrogen between galaxies.",
+  "sources": [
+   {
+    "label": "Bosman et al. 2022, end of reionization from quasar spectra",
+    "url": "https://arxiv.org/abs/2108.03699"
+   },
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   }
+  ],
+  "t_seconds": {
+   "best": 30546512824337090,
+   "min": 26371702738515060,
+   "max": 34251012791240120
+  }
+ },
+ {
+  "id": "cosmic-noon",
+  "name": "Cosmic noon",
+  "category": "Structure",
+  "label": "~3.5 Gyr",
+  "certainty": "Observed",
+  "summary": "Peak rate of star formation in the universe's history.",
+  "sources": [
+   {
+    "label": "Madau & Dickinson 2014, cosmic star-formation history",
+    "url": "https://arxiv.org/abs/1403.0007"
+   }
+  ],
+  "t_seconds": {
+   "best": 110627832468287150,
+   "min": 82243401835870610,
+   "max": 134426070101957360
+  }
+ },
+ {
+  "id": "acceleration",
+  "name": "Expansion starts accelerating",
+  "category": "Dark sector & expansion",
+  "label": "~7.7 Gyr",
+  "certainty": "Observed (supernovae)",
+  "summary": "Dark energy's push overtakes gravity's pull and cosmic expansion begins to speed up.",
+  "sources": [
+   {
+    "label": "Riess et al. 1998, accelerating universe from supernovae",
+    "url": "https://arxiv.org/abs/astro-ph/9805201"
+   },
+   {
+    "label": "Perlmutter et al. 1999, Ω and Λ from 42 supernovae",
+    "url": "https://arxiv.org/abs/astro-ph/9812133"
+   },
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   }
+  ],
+  "t_seconds": {
+   "best": 242676805564588580,
+   "min": 229951971064934600,
+   "max": 259612347303524300
+  }
+ },
+ {
+  "id": "sun-forms",
+  "name": "Solar nebula collapses; Sun forms",
+  "category": "Structure",
+  "label": "4.6 Gyr ago",
+  "certainty": "Precisely dated",
+  "summary": "A cloud of gas and dust, enriched by earlier stars, collapses into the Sun and a planet-forming disk.",
+  "sources": [
+   {
+    "label": "Connelly et al. 2012, absolute chronology of the solar protoplanetary disk",
+    "url": "https://doi.org/10.1126/science.1226919"
+   }
+  ],
+  "t_seconds": {
+   "best": 291068162459508500,
+   "min": 291061850939508500,
+   "max": 291074473979508500
+  },
+  "lookback_years": {
+   "best": 4567300000,
+   "min": 4567100000,
+   "max": 4567500000
+  }
+ },
+ {
+  "id": "earth-forms",
+  "name": "Earth forms",
+  "category": "Structure",
+  "label": "4.54 Gyr ago",
+  "certainty": "Precisely dated",
+  "summary": "Rocky material in the disk accretes into Earth.",
+  "sources": [
+   {
+    "label": "Age of Earth (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Age_of_Earth"
+   }
+  ],
+  "t_seconds": {
+   "best": 291929684939508500,
+   "min": 290351804939508500,
+   "max": 293507564939508500
+  },
+  "lookback_years": {
+   "best": 4540000000,
+   "min": 4490000000,
+   "max": 4590000000
+  }
+ },
+ {
+  "id": "moon-forms",
+  "name": "Moon-forming impact",
+  "category": "Structure",
+  "label": "~4.5 Gyr ago",
+  "certainty": "Well supported",
+  "summary": "A Mars-sized body strikes the young Earth; the debris coalesces into the Moon.",
+  "sources": [
+   {
+    "label": "Giant-impact hypothesis (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Giant-impact_hypothesis"
+   }
+  ],
+  "t_seconds": {
+   "best": 292876412939508500,
+   "min": 292245260939508500,
+   "max": 295401020939508500
+  },
+  "lookback_years": {
+   "best": 4510000000,
+   "min": 4430000000,
+   "max": 4530000000
+  }
+ },
+ {
+  "id": "oceans",
+  "name": "First oceans",
+  "category": "Life",
+  "label": "~4.4 Gyr ago",
+  "certainty": "Indirect evidence",
+  "summary": "Zircon crystals show liquid water on Earth within ~150 million years of its formation.",
+  "sources": [
+   {
+    "label": "Wilde et al. 2001, evidence for oceans 4.4 Gyr ago",
+    "url": "https://doi.org/10.1038/35051550"
+   }
+  ],
+  "t_seconds": {
+   "best": 296347748939508500,
+   "min": 296347748939508500,
+   "max": 308970788939508500
+  },
+  "lookback_years": {
+   "best": 4400000000,
+   "min": 4000000000,
+   "max": 4400000000
+  }
+ },
+ {
+  "id": "earliest-life",
+  "name": "Earliest life",
+  "category": "Life",
+  "label": "~3.8 Gyr ago",
+  "certainty": "Debated (3.5–4.1)",
+  "summary": "Single-celled microbes appear in Earth's oceans.",
+  "sources": [
+   {
+    "label": "Earliest known life forms (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Earliest_known_life_forms"
+   }
+  ],
+  "t_seconds": {
+   "best": 315282308939508500,
+   "min": 305815028939508500,
+   "max": 324749588939508500
+  },
+  "lookback_years": {
+   "best": 3800000000,
+   "min": 3500000000,
+   "max": 4099999999.9999995
+  }
+ },
+ {
+  "id": "dark-energy-dominates",
+  "name": "Dark energy dominates",
+  "category": "Dark sector & expansion",
+  "label": "~3.5 Gyr ago",
+  "certainty": "Observed",
+  "summary": "Dark energy becomes the largest component of the universe's energy budget.",
+  "sources": [
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   }
+  ],
+  "t_seconds": {
+   "best": 324868704681868540,
+   "min": 309005521274320640,
+   "max": 339041484248004500
+  }
+ },
+ {
+  "id": "great-oxidation",
+  "name": "Great Oxidation Event",
+  "category": "Life",
+  "label": "~2.4 Gyr ago",
+  "certainty": "Well dated",
+  "summary": "Photosynthesizing cyanobacteria fill the atmosphere with oxygen.",
+  "sources": [
+   {
+    "label": "Great Oxidation Event (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Great_Oxidation_Event"
+   }
+  ],
+  "t_seconds": {
+   "best": 359462948939508500,
+   "min": 356307188939508500,
+   "max": 362618708939508500
+  },
+  "lookback_years": {
+   "best": 2400000000,
+   "min": 2300000000,
+   "max": 2500000000
+  }
+ },
+ {
+  "id": "eukaryotes",
+  "name": "Complex cells (eukaryotes)",
+  "category": "Life",
+  "label": "~1.8 Gyr ago",
+  "certainty": "Debated",
+  "summary": "Cells with nuclei and mitochondria arise, likely from one microbe engulfing another.",
+  "sources": [
+   {
+    "label": "Eukaryote: origin (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Eukaryote#Origin_of_eukaryotes"
+   }
+  ],
+  "t_seconds": {
+   "best": 378397508939508500,
+   "min": 368930228939508500,
+   "max": 384709028939508500
+  },
+  "lookback_years": {
+   "best": 1800000000,
+   "min": 1600000000,
+   "max": 2100000000
+  }
+ },
+ {
+  "id": "cambrian",
+  "name": "Cambrian explosion",
+  "category": "Life",
+  "label": "538 Myr ago",
+  "certainty": "Well dated",
+  "summary": "Most major animal groups appear in the fossil record.",
+  "sources": [
+   {
+    "label": "Cambrian explosion (Wikipedia)",
+    "url": "https://en.wikipedia.org/wiki/Cambrian_explosion"
+   }
+  ],
+  "t_seconds": {
+   "best": 418197954059508500,
+   "min": 418191642539508500,
+   "max": 418204265579508500
+  },
+  "lookback_years": {
+   "best": 538800000,
+   "min": 538600000,
+   "max": 539000000
+  }
+ },
+ {
+  "id": "dinosaurs-extinct",
+  "name": "Dinosaurs go extinct",
+  "category": "Life",
+  "label": "66 Myr ago",
+  "certainty": "Precisely dated",
+  "summary": "An asteroid impact ends the age of dinosaurs and opens the way for mammals.",
+  "sources": [
+   {
+    "label": "Renne et al. 2013, time scales around the K–Pg boundary",
+    "url": "https://doi.org/10.1126/science.1230492"
+   }
+  ],
+  "t_seconds": {
+   "best": 433117030362708500,
+   "min": 433116683229108500,
+   "max": 433117377496308500
+  },
+  "lookback_years": {
+   "best": 66043000.00000001,
+   "min": 66032000,
+   "max": 66054000
+  }
+ },
+ {
+  "id": "homo-sapiens",
+  "name": "Homo sapiens",
+  "category": "Life",
+  "label": "~300,000 yr ago",
+  "certainty": "Well dated",
+  "summary": "Anatomically modern humans appear in Africa.",
+  "sources": [
+   {
+    "label": "Hublin et al. 2017, Jebel Irhoud Homo sapiens",
+    "url": "https://doi.org/10.1038/nature22336"
+   }
+  ],
+  "t_seconds": {
+   "best": 435191721659508500,
+   "min": 435190143779508500,
+   "max": 435192352811508500
+  },
+  "lookback_years": {
+   "best": 300000,
+   "min": 280000,
+   "max": 350000
+  }
+ },
+ {
+  "id": "now",
+  "name": "Now",
+  "category": "Structure",
+  "label": "13.8 billion years",
+  "certainty": "Precisely measured",
+  "summary": "Today: about 5% ordinary matter, 27% dark matter, 68% dark energy.",
+  "sources": [
+   {
+    "label": "Planck 2018 results VI: cosmological parameters",
+    "url": "https://arxiv.org/abs/1807.06209"
+   }
+  ],
+  "t_seconds": {
+   "best": 435201188907950850,
+   "min": 435201188907950850,
+   "max": 435201188907950850
+  },
+  "lookback_years": {
+   "best": 1,
+   "min": 1,
+   "max": 1
+  }
+ }
+]

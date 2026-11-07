@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 2
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "Spacetime & forces",
+          "Particles",
+          "Elements",
+          "Dark sector & expansion",
+          "Structure",
+          "Life"
+        ]
+      },
+      "t_seconds": {
+        "type": "object",
+        "properties": {
+          "best": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "min": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "max": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "best",
+          "min",
+          "max"
+        ],
+        "additionalProperties": false
+      },
+      "lookback_years": {
+        "type": "object",
+        "properties": {
+          "best": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "min": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "max": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "best",
+          "min",
+          "max"
+        ],
+        "additionalProperties": false
+      },
+      "label": {
+        "type": "string",
+        "minLength": 1
+      },
+      "certainty": {
+        "type": "string",
+        "minLength": 2
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 10
+      },
+      "range_note": {
+        "type": "string"
+      },
+      "sources": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 2
+            },
+            "url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "label",
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "category",
+      "t_seconds",
+      "label",
+      "certainty",
+      "summary",
+      "sources"
+    ],
+    "additionalProperties": false
+  }
+}

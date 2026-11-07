@@ -1,0 +1,122 @@
+[
+ {
+  "id": "planck",
+  "era": "Planck",
+  "lane": "Epoch",
+  "start_s": 0,
+  "end_s": 1e-43,
+  "description": "Quantum gravity; physics unknown"
+ },
+ {
+  "id": "gut",
+  "era": "Grand unification",
+  "lane": "Epoch",
+  "start_s": 1e-43,
+  "end_s": 1e-36,
+  "description": "Strong and electroweak forces unified"
+ },
+ {
+  "id": "inflation",
+  "era": "Inflation",
+  "lane": "Epoch",
+  "start_s": 1e-36,
+  "end_s": 1e-32,
+  "description": "Exponential expansion"
+ },
+ {
+  "id": "electroweak",
+  "era": "Electroweak",
+  "lane": "Epoch",
+  "start_s": 1e-32,
+  "end_s": 1e-12,
+  "description": "Electromagnetic and weak forces unified"
+ },
+ {
+  "id": "quark",
+  "era": "Quark",
+  "lane": "Epoch",
+  "start_s": 1e-12,
+  "end_s": 0.000001,
+  "description": "Quark–gluon plasma"
+ },
+ {
+  "id": "hadron",
+  "era": "Hadron",
+  "lane": "Epoch",
+  "start_s": 0.000001,
+  "end_s": 1,
+  "description": "Protons and neutrons form"
+ },
+ {
+  "id": "lepton",
+  "era": "Lepton",
+  "lane": "Epoch",
+  "start_s": 1,
+  "end_s": 10,
+  "description": "Leptons dominate the mass"
+ },
+ {
+  "id": "photon",
+  "era": "Photon",
+  "lane": "Epoch",
+  "start_s": 10,
+  "end_s": 11714483354406.697,
+  "description": "Light dominates; nuclei form"
+ },
+ {
+  "id": "dark-ages",
+  "era": "Dark ages",
+  "lane": "Epoch",
+  "start_s": 11714483354406.697,
+  "end_s": 4733640000000000,
+  "description": "Neutral gas, no stars"
+ },
+ {
+  "id": "reionization",
+  "era": "Reionization",
+  "lane": "Epoch",
+  "start_s": 4733640000000000,
+  "end_s": 30546512824337090,
+  "description": "First stars and galaxies"
+ },
+ {
+  "id": "stars-galaxies",
+  "era": "Stars & galaxies",
+  "lane": "Epoch",
+  "start_s": 30546512824337090,
+  "end_s": 435201188939508500,
+  "description": "Galaxies, planets, life"
+ },
+ {
+  "id": "inflaton",
+  "era": "Inflaton field",
+  "lane": "Dominant component",
+  "start_s": 1e-36,
+  "end_s": 1e-32,
+  "description": "Vacuum energy drives inflation"
+ },
+ {
+  "id": "radiation",
+  "era": "Radiation",
+  "lane": "Dominant component",
+  "start_s": 1e-32,
+  "end_s": 1589594301988.357,
+  "description": "Radiation-dominated expansion"
+ },
+ {
+  "id": "matter",
+  "era": "Matter",
+  "lane": "Dominant component",
+  "start_s": 1589594301988.357,
+  "end_s": 324868704681868540,
+  "description": "Matter-dominated (mostly dark matter)"
+ },
+ {
+  "id": "dark-energy",
+  "era": "Dark energy",
+  "lane": "Dominant component",
+  "start_s": 324868704681868540,
+  "end_s": 435201188939508500,
+  "description": "Dark-energy-dominated, accelerating"
+ }
+]
