@@ -6,6 +6,7 @@ import { createGlobals, globalsAt } from '../physics/cosmology.ts';
 import { formatDuration, formatLookback, num, sci } from '../time/format.ts';
 import { CHAPTERS } from '../time/chapters.ts';
 import { ACCURACY_LABEL } from '../data/site.ts';
+import { supHtml } from '../lib/sup.ts';
 /** From the solar system on, the readout counts back from today. */
 const FIRST_LOOKBACK_CHAPTER = CHAPTERS.findIndex((c) => c.id === 'solarSystem');
 
@@ -56,10 +57,10 @@ export function initTimelineNav(root: HTMLElement): void {
     const s = $time.get();
     marker.style.setProperty('--mp', String($progress.get()));
     const late = s.chapterIndex >= FIRST_LOOKBACK_CHAPTER;
-    when.textContent = late ? formatLookback(s.lookback) : formatDuration(s.t, 'long');
+    when.innerHTML = supHtml(late ? formatLookback(s.lookback) : formatDuration(s.t, 'long'));
     globalsAt(s.t, g);
     const zPart = g.epoch === 'friedmann' ? `z ${fmtZ(g.z)}` : g.epoch === 'inflation' ? 'inflating' : 'before inflation';
-    phys.textContent = `T ${fmtTemp(g.T)} · ${zPart}`;
+    phys.innerHTML = supHtml(`T ${fmtTemp(g.T)} · ${zPart}`);
     if (mobile.matches) {
       const track = strip.firstElementChild as HTMLElement;
       const x = track.offsetLeft + $progress.get() * track.offsetWidth - strip.clientWidth / 2;

@@ -9,6 +9,7 @@ import { formatDuration, formatLookback } from '../time/format.ts';
 import { YEAR_S, T_PLANCK_S } from '../physics/constants.ts';
 import { AGE_SECONDS } from '../physics/cosmology.ts';
 import { ACCURACY_HELP, ACCURACY_LABEL } from '../data/site.ts';
+import { supHtml } from '../lib/sup.ts';
 
 interface Props {
   titles: Record<string, string>;
@@ -64,7 +65,7 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
 
 <nav class="rail" aria-label="Timeline of the universe" data-rail data-own-keys>
   <div class="readout" data-readout>
-    <p class="when" data-when aria-hidden="true">5.4 × 10⁻⁴⁴ s</p>
+    <p class="when" data-when aria-hidden="true" set:html={supHtml('5.4 × 10⁻⁴⁴ s')} />
     <p class="chapter" data-chapter-title aria-hidden="true">{chapters[0]!.title}</p>
     <p class="phys" data-phys aria-hidden="true"></p>
     <button type="button" class="badge" data-badge data-acc="metaphor" aria-describedby="acc-note">
@@ -114,7 +115,7 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
             <div class="tip" role="tooltip" id={`tip-${e.id}`}>
               <p class="tip-cat">{e.category}</p>
               <p class="tip-name">{e.name}</p>
-              <p class="tip-when">{e.label}{e.range && <span class="tip-range"> · range {e.range}</span>}</p>
+              <p class="tip-when"><Fragment set:html={supHtml(e.label)} />{e.range && <span class="tip-range" set:html={` · range ${supHtml(e.range)}`} />}</p>
               <p class="tip-sum">{e.summary}</p>
               <p class="tip-cert">{e.certainty}</p>
             </div>
@@ -621,9 +622,13 @@ const chapters = CHAPTERS.map((c, i) => ({ id: c.id, title: titles[c.id] ?? c.id
     .chapters button {
       flex-direction: row;
     }
-    .chapters .tick {
+    .chapters .tick,
+    .chapters button[aria-current='true'] .tick {
       width: 1px;
       height: 0.6rem;
+    }
+    .chapters .label {
+      display: none;
     }
     .events li {
       right: auto;

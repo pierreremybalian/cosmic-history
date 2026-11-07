@@ -1,0 +1,136 @@
+---
+// Traceability check (HANDOFF Phase 5): the same slice of the one primordial field, four ways.
+// ζ (what inflation shows) → linear δ (BBKS) → smoothed δ with halo peaks (first stars, reionization) →
+// Zel'dovich particles in a thin slab at A = 1 (the web in darkAges → now). Fixed seed: identical every load.
+import Base from '../../layouts/Base.astro';
+---
+
+<Base title="Field traceability" noindex>
+  <main class="wrap">
+    <h1>One field, four views</h1>
+    <p>Slice z = 0.5 of the 128³ primordial field (seed 1977, 100 Mpc/h box). Peaks are circled in every panel.</p>
+    <div class="grid">
+      <figure><canvas data-panel="zeta" width="512" height="512"></canvas><figcaption>ζ — inflation's ripples</figcaption></figure>
+      <figure><canvas data-panel="delta" width="512" height="512"></canvas><figcaption>δ linear (BBKS) — dark ages</figcaption></figure>
+      <figure><canvas data-panel="smooth" width="512" height="512"></canvas><figcaption>δ smoothed 2 Mpc/h + peaks — first stars</figcaption></figure>
+      <figure><canvas data-panel="web" width="512" height="512"></canvas><figcaption>Zel’dovich particles, A = 1 — the web</figcaption></figure>
+    </div>
+    <p data-status>Building field…</p>
+  </main>
+</Base>
+
+<script>
+  import { DEFAULT_FIELD, generateField, zeldovichParticles, sampleGrid } from '../../shared/fieldCore.ts';
+
+  const status = document.querySelector<HTMLElement>('[data-status]')!;
+  const t0 = performance.now();
+  const f = generateField({ ...DEFAULT_FIELD, n: 128 });
+  const p = zeldovichParticles(f, 63);
+  const n = f.n;
+  const zSlice = 0.5;
+  const peaks: [number, number][] = [];
+  for (let i = 0; i < f.peaks.length / 4; i++) {
+    const qz = f.peaks[i * 4 + 2]!;
+    if (Math.abs(qz - zSlice) < 0.03) peaks.push([f.peaks[i * 4]!, f.peaks[i * 4 + 1]!]);
+  }
+
+  const diverging = (v: number): [number, number, number] => {
+    const t = Math.max(-1, Math.min(1, v / 2.5));
+    const lerp = (a: number, b: number, s: number) => a + (b - a) * s;
+    return t < 0
+      ? [lerp(245, 20, -t), lerp(242, 50, -t), lerp(235, 160, -t)]
+      : [lerp(245, 200, t), lerp(242, 40, t), lerp(235, 30, t)];
+  };
+  const drawField = (name: string, grid: Float32Array, sigma: number) => {
+    const c = document.querySelector<HTMLCanvasElement>(`[data-panel="${name}"]`)!;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(c.width, c.height);
+    for (let y = 0; y < c.height; y++)
+      for (let x = 0; x < c.width; x++) {
+        const v = sampleGrid(grid, n, 1, 0, x / c.width, y / c.height, zSlice) / sigma;
+        const [r, g, b] = diverging(v);
+        const k = (y * c.width + x) * 4;
+        img.data[k] = r;
+        img.data[k + 1] = g;
+        img.data[k + 2] = b;
+        img.data[k + 3] = 255;
+      }
+    ctx.putImageData(img, 0, 0);
+    return ctx;
+  };
+  const circles = (ctx: CanvasRenderingContext2D) => {
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 1.5;
+    for (const [x, y] of peaks.slice(0, 40)) {
+      ctx.beginPath();
+      ctx.arc(x * 512, y * 512, 9, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  };
+  circles(drawField('zeta', f.zeta, 1));
+  circles(drawField('delta', f.delta, f.sigmaDelta));
+  circles(drawField('smooth', f.deltaSmooth, f.sigmaSmooth));
+
+  const wc = document.querySelector<HTMLCanvasElement>('[data-panel="web"]')!;
+  const wctx = wc.getContext('2d')!;
+  wctx.fillStyle = '#000';
+  wctx.fillRect(0, 0, 512, 512);
+  wctx.fillStyle = 'rgba(180,220,255,0.55)';
+  // Particles whose Lagrangian q lies in a thick slab, drawn at their Eulerian x = q + ψ (A = 1), wrapped.
+  for (let i = 0; i < p.q.length / 4; i++) {
+    const qz = p.q[i * 4 + 2]!;
+    const x = (((p.q[i * 4]! + p.psi[i * 4]!) % 1) + 1) % 1;
+    const y = (((p.q[i * 4 + 1]! + p.psi[i * 4 + 1]!) % 1) + 1) % 1;
+    const z = (((qz + p.psi[i * 4 + 2]!) % 1) + 1) % 1;
+    if (Math.abs(z - zSlice) > 0.04) continue;
+    wctx.fillRect(x * 512, y * 512, 1.6, 1.6);
+  }
+  // Peaks displaced to A = 1 (where the halos end up).
+  wctx.strokeStyle = 'rgba(255,200,120,0.95)';
+  for (let i = 0; i < Math.min(f.peaks.length / 4, 400); i++) {
+    const qx = f.peaks[i * 4]!;
+    const qy = f.peaks[i * 4 + 1]!;
+    const qz = f.peaks[i * 4 + 2]!;
+    const x = (((qx + sampleGrid(f.psi, n, 3, 0, qx, qy, qz)) % 1) + 1) % 1;
+    const y = (((qy + sampleGrid(f.psi, n, 3, 1, qx, qy, qz)) % 1) + 1) % 1;
+    const z = (((qz + sampleGrid(f.psi, n, 3, 2, qx, qy, qz)) % 1) + 1) % 1;
+    if (Math.abs(z - zSlice) > 0.03) continue;
+    wctx.beginPath();
+    wctx.arc(x * 512, y * 512, 9, 0, Math.PI * 2);
+    wctx.stroke();
+  }
+  status.textContent = `Built in ${(performance.now() - t0).toFixed(0)} ms · σδ = ${f.sigmaDelta.toFixed(2)} · ${f.peaks.length / 4} peaks (${peaks.length} near this slice)`;
+  (window as unknown as { __ready?: boolean }).__ready = true;
+</script>
+
+<style>
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+    font-family: var(--font-sans);
+    color: var(--color-fog);
+  }
+  h1 {
+    font-family: var(--font-serif);
+    font-size: 2rem;
+    color: var(--color-paper);
+  }
+  .grid {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  canvas {
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+    border: 1px solid var(--color-line);
+  }
+  figcaption {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    margin-top: 0.3rem;
+  }
+</style>

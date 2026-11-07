@@ -64,7 +64,7 @@ for (const job of jobs) {
     if (job.url.includes('/dev/scenes')) await page.waitForFunction('window.__ready === true', null, { timeout, polling: 250 });
     else {
       const m = job.url.match(/#p=([\d.]+)/);
-      await page.waitForFunction('!!window.__driver && !!window.__engine', null, { timeout });
+      await page.waitForFunction('window.__ready === true || (!!window.__driver && !!window.__engine)', null, { timeout });
       if (m) {
         await page.evaluate((p) => (window as unknown as { __driver: { scrollToProgress(p: number, o: object): void } }).__driver.scrollToProgress(p, { immediate: true }), Number(m[1]));
       }

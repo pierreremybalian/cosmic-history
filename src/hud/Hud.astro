@@ -9,13 +9,13 @@ const cmbGradient = `linear-gradient(90deg, ${CMB_STOPS.map(([t, c]) => `${c} ${
   <section class="card bbn" data-hud="bbn">
     <h3>Mass fractions</h3>
     <ul>
-      <li data-el="protons"><span class="nm">H¹</span><span class="bar"><i></i></span><span class="v"></span></li>
+      <li data-el="protons"><span class="nm">H</span><span class="bar"><i></i></span><span class="v"></span></li>
       <li data-el="neutrons"><span class="nm">n</span><span class="bar"><i></i></span><span class="v"></span></li>
-      <li data-el="deuterium"><span class="nm">H²</span><span class="bar log"><i></i></span><span class="v"></span></li>
-      <li data-el="helium4"><span class="nm">He⁴</span><span class="bar"><i></i></span><span class="v"></span></li>
-      <li data-el="lithium7"><span class="nm">Li⁷</span><span class="bar log"><i></i></span><span class="v"></span></li>
+      <li data-el="deuterium"><span class="nm">D</span><span class="bar log"><i></i></span><span class="v"></span></li>
+      <li data-el="helium4"><span class="nm"><sup>4</sup>He</span><span class="bar"><i></i></span><span class="v"></span></li>
+      <li data-el="lithium7"><span class="nm"><sup>7</sup>Li</span><span class="bar log"><i></i></span><span class="v"></span></li>
     </ul>
-    <p class="foot">D and Li on a log scale · Yₚ → 0.247</p>
+    <p class="foot">D and Li on a log scale · Y<sub>p</sub> → 0.247</p>
   </section>
 
   <section class="card cmb" data-hud="cmb">
@@ -32,7 +32,7 @@ const cmbGradient = `linear-gradient(90deg, ${CMB_STOPS.map(([t, c]) => `${c} ${
       <line class="now" data-sfr-now x1="0" x2="0" y1="0" y2="80"></line>
     </svg>
     <div class="ticks"><span>Big Bang</span><span data-sfr-peak>peak ~3.5 Gyr</span><span>now</span></div>
-    <p class="foot">Madau &amp; Dickinson 2014 fit · M☉ yr⁻¹ Mpc⁻³</p>
+    <p class="foot">Madau &amp; Dickinson 2014 fit · M☉ yr<sup>−1</sup> Mpc<sup>−3</sup></p>
   </section>
 
   <section class="card omega" data-hud="omega">
