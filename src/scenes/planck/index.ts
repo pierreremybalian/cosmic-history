@@ -56,8 +56,8 @@ const LOOK_OPEN: FoamLook = {
 };
 /** One field: the foam calms (slower churn, rounder cells) and frames the luminous field driven separately. */
 const LOOK_UNIFIED: FoamLook = {
-  radius: 2.3,
-  bound: 3.0,
+  radius: 2.1,
+  bound: 2.7,
   zSquash: 1.2,
   cellsWorld: 1.15,
   warp: 0.25,

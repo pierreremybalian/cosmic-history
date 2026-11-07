@@ -290,12 +290,16 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
         // Shared primordial field: ψ (smooth displacement, each component σ ≈ 0.58) gives the broad variation and
         // warps the finer lookups, so the structure curls like turbulence; smoothed δ (B) at two scales gives the body.
         const psiA = texture3D(o.disp, qa.mul(0.45)).level(float(0)).xyz;
-        const bm = texture3D(o.field, qa.add(psiA.mul(u.warp))).level(float(0)).b;
-        const bf = texture3D(o.field, qa.mul(2.1).add(psiA.mul(u.warp.mul(2))).add(vec3(0.31, 0.17, 0.59))).level(float(0)).b;
+        const tm = texture3D(o.field, qa.add(psiA.mul(u.warp))).level(float(0));
+        const tf = texture3D(o.field, qa.mul(2.1).add(psiA.mul(u.warp.mul(2))).add(vec3(0.31, 0.17, 0.59))).level(float(0));
+        const bm = tm.b;
+        const bf = tf.b;
+        // Fine turbulent grain from the same taps: inflation's ζ (G) and the unsmoothed δ (R), both rich in small scales.
+        const grain = tf.g.mul(0.6).add(tm.r.mul(0.4));
         // Acoustic ringing: the body oscillates between the two scales' patterns (cos/sin of a phase that runs with
         // the sound speed and freezes at decoupling), so the texture keeps re-forming like a ringing medium.
         const nRing = bm.mul(u.osc.x).add(bf.mul(u.osc.y));
-        const n = psiA.x.mul(1.7 * 0.35).add(nRing.mul(0.8)).add(bf.mul(u.fineAmp).mul(0.35));
+        const n = psiA.x.mul(1.7 * 0.35).add(nRing.mul(0.8)).add(grain.mul(u.fineAmp).mul(0.35));
         // Thin incandescent sheets where the ringing field crosses zero.
         const sheet = pow(clamp(float(1).sub(abs(nRing).mul(0.9)), 0, 1), 4);
         // Dark-matter wells: smoothed δ (B), only where it is overdense; photons climbing out look cooler.
@@ -365,7 +369,10 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
         const att = step(0, sN)
           .mul(exp(u.sigma.mul(max(sN, 0)).negate()))
           .add(step(0, sF).mul(exp(u.sigma.mul(max(sF, 0)).negate())));
-        train = train.add(base.mul(fall).mul(att).mul(amp));
+        // Rims only: weight by (limb / peak)² so a shell reads as a thin ring, never a filled disc.
+        const peak = sqrt(rm.mul(w).div(1.5).add(1e-6));
+        const rim = base.div(peak);
+        train = train.add(base.mul(rim).mul(rim).mul(fall).mul(att).mul(amp));
       });
       shells = shells.add(env.mul(train));
     }

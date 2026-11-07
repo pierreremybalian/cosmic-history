@@ -261,7 +261,9 @@ export default (): CosmicScene => {
           nEvents * EVENT_PARTS,
         ),
       );
-      layers.push(createStreaks(excessLayer(s, u, view, gain), view, nNucleons));
+      // One surviving electron per proton (charge balance): nucleons less the neutrons left at the chapter's end.
+      const nElectrons = Math.max(1, Math.round(nNucleons * (1 - abundancesAt(CHAPTER.tEnd).neutrons)));
+      layers.push(createStreaks(excessLayer(s, u, view, gain), view, nElectrons));
       layers.push(createStreaks(nucleonLayer(s, u, view, gain), view, nNucleons * NUCLEON_PARTS));
 
       bath = createBath(ctx, {

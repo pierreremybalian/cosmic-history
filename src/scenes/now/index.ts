@@ -16,8 +16,8 @@
 //   0.78  the CMB, 45 billion light-years    → the real Planck map on the sphere of last scattering
 //   0.92  5% / 27% / 68%                      → the whole observable universe inside the CMB shell; calm drift
 
-import { Group, PerspectiveCamera, Scene, Vector3, type RenderTarget, type Texture, type WebGPURenderer, NoColorSpace, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter } from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { AdditiveBlending, BufferGeometry, Color, Float32BufferAttribute, Group, LineBasicNodeMaterial, LineSegments, Matrix4, PerspectiveCamera, Quaternion, Scene, Vector3, type RenderTarget, type Texture, type WebGPURenderer, NoColorSpace, RepeatWrapping, LinearFilter, LinearMipmapLinearFilter } from 'three/webgpu';
+import { float, uniform, vec3 } from 'three/tsl';
 import { globalsAt } from '../../physics/cosmology.ts';
 import { LITTLE_H, MPC_M, Z_LAST_SCATTERING } from '../../physics/constants.ts';
 import { madauDickinsonSFR } from '../../physics/recombination.ts';
@@ -26,6 +26,7 @@ import { gaussian, mulberry32, smootherstep, smoothstep } from '../../shared/mat
 import { createCosmicWeb, type CosmicWeb } from '../../shared/web.ts';
 import {
   addNearFade,
+  addSlabFade,
   addSphereFade,
   createGalaxyImpostors,
   createGalaxySprites,
@@ -44,6 +45,12 @@ import {
 } from '../cosmicNoon/galaxies.ts';
 import { sceneRange } from '../sceneRange.ts';
 import type { CosmicScene, RenderContext } from '../types.ts';
+import { blackbodyColour, createPlanet, setAtmosphereUniforms, type AtmosphereSpec, type Planet } from '../life/planet.ts';
+import { HANDOFF } from '../life/handoff.ts';
+import { loadGeography, type Geography } from '../life/geography.ts';
+import { params as lifeParams } from '../life/index.ts';
+import { ARCHEAN_HAZE, northIceSheet, params as T, sunLuminosity, table, tableRGB } from '../life/timeline.ts';
+import { dirFromLatLon, PLATE, plateInverseQuats, siteAt } from '../life/plates.ts';
 import { createCosmos, type Cosmos } from './cosmos.ts';
 import { createEarth, type Earth } from './earth.ts';
 import { centuriesSinceJ2000, earthAxis, eclipticPole, eclToWorld, eqToWorld, equatorialRaDec, galacticLB, moonEcliptic } from './ephemeris.ts';
@@ -58,28 +65,29 @@ const KPC_M = PC_M * 1e3;
 const GPC_M = MPC_M * 1e3;
 
 const params = {
-  fov: 40,
+  /** Same lens as the life scene, whose last frame (Earth at 5.6 radii) this scene opens on. */
+  fov: HANDOFF.camera.fov,
   /** log10(camera distance / m) vs local: slow on Earth, then ever faster, settling on the CMB sphere. */
   logDistance: [
-    [0.0, 7.62],
-    [0.05, 7.95],
-    [0.09, 8.95],
-    [0.12, 10.4],
-    [0.15, 12.1],
-    [0.19, 13.05],
-    [0.22, 15.0],
-    [0.25, 18.2],
-    [0.275, 20.2],
-    [0.3, 21.15],
-    [0.38, 21.75],
-    [0.46, 22.62],
-    [0.54, 23.45],
-    [0.62, 24.9],
-    [0.7, 25.95],
-    [0.76, 26.7],
-    [0.84, 27.08],
-    [0.92, 27.17],
-    [1.0, 27.21],
+    [0.0, 7.5525],
+    [0.05, 8.083],
+    [0.09, 9.083],
+    [0.12, 10.533],
+    [0.15, 12.233],
+    [0.19, 13.183],
+    [0.22, 15.133],
+    [0.25, 18.333],
+    [0.275, 20.333],
+    [0.3, 21.283],
+    [0.38, 21.883],
+    [0.46, 22.753],
+    [0.54, 23.583],
+    [0.62, 25.033],
+    [0.7, 26.083],
+    [0.76, 26.833],
+    [0.84, 27.213],
+    [0.92, 27.303],
+    [1.0, 27.343],
   ] as [number, number][],
   /** Distance of the Sun from the Galactic Centre, kpc (GRAVITY Collaboration 2019). */
   sunR0Kpc: 8.18,
@@ -94,19 +102,19 @@ const params = {
     sf: 0.5,
   },
   m31: { stars: { low: 25_000, medium: 60_000, high: 120_000 }, sf: 0.3 },
-  web: { brightness: 0.12, contrast: 1.35, reveal: 0.5, outerFraction: 0.3, sphere: [4.2, 7.2] as const, galaxyRadius: 0.022 },
+  web: { brightness: 0.12, contrast: 1.35, reveal: 0.5, outerFraction: 0.3, sphere: [4.2, 7.2] as const, slab: [0.9, 1.6] as const, galaxyRadius: 0.022 },
   /** Galaxies beyond the Milky Way are enlarged progressively (up to this factor) so they stay visible. */
   galaxyBoost: 2.5,
   /** Extra enlargement as the Local Group recedes, so it stays a legible group until the web takes over. */
   galaxyBoostFar: 3.5,
   /** Local Volume galaxies are enlarged a further ×this (they are seen from 10–40 Mpc). */
-  lvBoost: 1.8,
+  lvBoost: 2.5,
   cosmos: { haze: { low: 50_000, medium: 140_000, high: 280_000 } },
   stars: { low: 6000, medium: 14000, high: 24000 },
   belts: 9000,
   /** Visibility windows in log10(D/m): [in0, in1, out0, out1]. */
   vis: {
-    earth: [-99, -98, 9.3, 10.1],
+    earth: [-99, -98, 10.2, 10.9],
     solar: [-99, -98, 15.2, 16.2],
     orbits: [9.4, 10.6, 14.2, 15.0],
     stars: [-99, -98, 19.3, 20.1],
@@ -138,6 +146,65 @@ interface Layer {
   visible: boolean;
 }
 
+/** Configure life's planet for the present day exactly as the life scene's final frame does (§ life/index.ts). */
+function setPresentDayEarth(planet: Planet, sunWorld: Vector3): void {
+  const L = 0.01; // Myr ago: the end of the life scene
+  const pu = planet.u;
+  const rgb: [number, number, number] = [0, 0, 0];
+  const atmo: AtmosphereSpec = structuredClone(lifeParams.atmosphere);
+  const ozone = Math.min(1, Math.max(0, (table(T.logO2, L) + 3.5) / 3));
+  for (let c = 0; c < 3; c++) {
+    atmo.haze[c] = ARCHEAN_HAZE[c]! * table(T.haze, L);
+    atmo.ozone[c] = lifeParams.atmosphere.ozone[c]! * ozone;
+  }
+  setAtmosphereUniforms(pu, atmo, 1);
+  if (planet.atmosphere) planet.atmosphere.scale.setScalar(1 + pu.atmoTop.value);
+  pu.ambient.value = HANDOFF.ambient;
+  pu.soot.value = 0;
+  pu.sunIntensity.value = lifeParams.sunIntensity * sunLuminosity(L);
+  pu.sunColour.value.copy(blackbodyColour(table(T.sunTeff, L), new Color()));
+  pu.sunDir.value.copy(sunWorld);
+  pu.crust.value = table(T.crust, L);
+  pu.realPlates.value = table(T.realPlates, L);
+  pu.oceanDeep.value.setRGB(...tableRGB(T.oceanDeep, L, rgb));
+  pu.oceanShallow.value.setRGB(...tableRGB(T.oceanShallow, L, rgb));
+  pu.oceanLife.value = table(T.oceanLife, L);
+  pu.bloomColour.value.setRGB(...tableRGB(T.bloomColour, L, rgb));
+  pu.shelfTint.value = table(T.shelfTint, L);
+  pu.rust.value = table(T.rust, L);
+  pu.rockA.value.setRGB(...tableRGB(T.rockA, L, rgb));
+  pu.rockB.value.setRGB(...tableRGB(T.rockB, L, rgb));
+  pu.landLife.value = table(T.landLife, L);
+  pu.hotspots.value = table(T.hotspots, L);
+  pu.snowball.value = table(T.snowball, L);
+  const nhEdge = northIceSheet(L);
+  const glacial = Math.min(1, Math.max(0, (1 - nhEdge) / 0.34));
+  pu.iceEdgeNorthLand.value = nhEdge;
+  pu.photoIce.value = table(T.antarcticIce, L);
+  pu.northIce.value = table(T.northIce, L);
+  pu.cloudCover.value = table(T.cloudCover, L) - 0.12 * glacial;
+  pu.seaLevel.value = table(T.seaLevel, L) - 0.025 * glacial;
+  pu.iceEdge.value = table(T.iceEdge, L) - 0.06 * glacial;
+  pu.impactFlash.value = 0;
+  pu.impactAge.value = 1;
+  plateInverseQuats(L, pu.plates.map((p) => p.value));
+  const q = new Quaternion();
+  for (let k = 0; k < pu.noisePlates.length; k++) {
+    q.setFromAxisAngle(dirFromLatLon(23 * k - 40, 71 * k + 10, new Vector3()), (0.35 + 0.17 * k) * 4.4 * (k % 2 ? 1 : -1));
+    pu.noisePlates[k]!.value.set(q.x, q.y, q.z, q.w);
+  }
+  // Africa toward the camera, as at the end of life (its closing lock): same formula, same constants.
+  const az = (HANDOFF.camera.az * Math.PI) / 180;
+  const sunLife = new Vector3(...HANDOFF.sunDir).normalize();
+  const sunAz = Math.atan2(sunLife.x, sunLife.z);
+  const endLon = lifeParams.endLon.at(-1)![1];
+  const site = siteAt(PLATE.africa, 0, endLon, L, new Vector3());
+  const theta = az + 0.15 * (sunAz - az) - Math.atan2(site.x, site.z);
+  planet.surface.rotation.y = theta;
+  if (planet.clouds) planet.clouds.rotation.y = theta;
+  pu.cloudRel.value.set(0, 0, 0, 1);
+}
+
 const fade = (x: number, w: [number, number, number, number]) => smoothstep(w[0], w[1], x) * (1 - smoothstep(w[2], w[3], x));
 
 export default (): CosmicScene => {
@@ -145,6 +212,11 @@ export default (): CosmicScene => {
   const layers: Record<string, Layer> = {};
   const order = ['cosmos', 'web', 'localGroup', 'galaxy', 'stars', 'solar', 'earth'] as const;
   let earth: Earth;
+  let planet: Planet;
+  let moonOrbitGeo: BufferGeometry;
+  let moonOrbitMat: LineBasicNodeMaterial;
+  let moonDot: Points;
+  let geo: Geography | null = null;
   let solar: SolarSystem;
   let hood: Neighbourhood;
   let mw: SpiralGalaxy;
@@ -176,6 +248,7 @@ export default (): CosmicScene => {
   const dirWeb = new Vector3();
   const dirCosmos = new Vector3();
   const sunDirFromEarth = new Vector3();
+  const sunLit = new Vector3();
   const target = new Vector3();
   const dir = new Vector3();
   const camM = new Vector3();
@@ -183,11 +256,18 @@ export default (): CosmicScene => {
   const tmp2 = new Vector3();
   const yAxis = new Vector3(0, 1, 0);
   const webRot = new Group();
+  const moonOrbitVis = uniform(0);
+  const lifeToWorld = new Quaternion();
+  const earthUp = new Vector3(0, 1, 0);
+  const up = new Vector3();
   const webNear0 = uniform(0.1);
   const webNear1 = uniform(0.3);
   const sphereC = uniform(new Vector3());
   const sphere0 = uniform(params.web.sphere[0]);
   const sphere1 = uniform(params.web.sphere[1]);
+  const slabN = uniform(new Vector3(0, 0, 1));
+  const slab0 = uniform(1e6);
+  const slab1 = uniform(2e6);
   const mwNear0 = uniform(0.01);
   const mwNear1 = uniform(0.05);
 
@@ -229,16 +309,67 @@ export default (): CosmicScene => {
       earthM.copy(solar.earthPos).multiplyScalar(AU_M);
       sunDirFromEarth.copy(earthM).negate().normalize();
 
-      // ── Earth (Earth radii) ──
+      // ── Earth (Earth radii): the life scene's planet, exactly as that scene leaves it (present day) ──
       const earthScene = makeLayer('earth', R_EARTH_M, earthM, 1e-3, 400);
-      earth = createEarth(pal.sun);
+      geo = await loadGeography(ctx.assets);
+      planet = createPlanet({ quality: ctx.quality, lut: ctx.globals.lut, geography: geo });
+      earthScene.add(planet.group);
+      // Life's planet frame → Galactic world: its spin axis (+Y) onto the true celestial pole, and the Sun's
+      // azimuth around that axis onto today's real Sun, so the opening frame matches life's closing frame.
+      {
+        const sunLife = new Vector3(...HANDOFF.sunDir).normalize();
+        const axisW = earthAxis(new Vector3());
+        const yL = new Vector3(0, 1, 0);
+        const sL = sunLife.clone().addScaledVector(yL, -sunLife.dot(yL)).normalize();
+        const sW = sunDirFromEarth.clone().addScaledVector(axisW, -sunDirFromEarth.dot(axisW)).normalize();
+        const bl = new Matrix4().makeBasis(yL, sL, new Vector3().crossVectors(yL, sL));
+        const bw = new Matrix4().makeBasis(axisW, sW, new Vector3().crossVectors(axisW, sW));
+        lifeToWorld.setFromRotationMatrix(bw.multiply(bl.transpose()));
+        planet.group.quaternion.copy(lifeToWorld);
+        earthUp.copy(yL).applyQuaternion(lifeToWorld);
+        sunLit.copy(sunLife).applyQuaternion(lifeToWorld);
+      }
+      setPresentDayEarth(planet, sunLit);
+      earth = createEarth(pal.sun, { globe: false });
       earthScene.add(earth.group);
-      earth.uniforms.sunDir.value.copy(sunDirFromEarth);
-      earthAxis(tmp);
-      earth.tilt.quaternion.setFromUnitVectors(yAxis, tmp);
+      earth.uniforms.sunDir.value.copy(sunLit);
       moonEcliptic(date, tmp);
       eclToWorld(tmp.x, tmp.y, tmp.z, tmp);
       earth.moon.position.copy(tmp).multiplyScalar(1000 / R_EARTH_M);
+      // The Moon's orbit (a faint circle through today's Moon, in the plane nearest the ecliptic: i ≈ 5°) and a
+      // dot that keeps the Moon visible once its disc is smaller than a pixel.
+      {
+        const m = earth.moon.position.clone();
+        const r = m.length();
+        const n = eclipticPole(new Vector3());
+        n.addScaledVector(m, -n.dot(m) / (r * r)).normalize();
+        const e1 = m.clone().normalize();
+        const e2 = new Vector3().crossVectors(n, e1);
+        const pts: number[] = [];
+        const SEG = 256;
+        for (let k = 0; k < SEG; k++) {
+          const a0 = (k / SEG) * Math.PI * 2;
+          const a1 = ((k + 1) / SEG) * Math.PI * 2;
+          for (const a of [a0, a1]) {
+            const v = e1.clone().multiplyScalar(Math.cos(a) * r).addScaledVector(e2, Math.sin(a) * r);
+            pts.push(v.x, v.y, v.z);
+          }
+        }
+        moonOrbitGeo = new BufferGeometry();
+        moonOrbitGeo.setAttribute('position', new Float32BufferAttribute(pts, 3));
+        moonOrbitMat = new LineBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+        moonOrbitMat.colorNode = vec3(0.55, 0.68, 1.0).mul(0.22).mul(moonOrbitVis);
+        moonOrbitMat.opacityNode = float(1);
+        const orbit = new LineSegments(moonOrbitGeo, moonOrbitMat);
+        orbit.frustumCulled = false;
+        earthScene.add(orbit);
+        moonDot = createPoints({ count: 2, resolution: res, fovDeg: params.fov, sharpness: 5 });
+        moonDot.pos.setXYZW(0, m.x, m.y, m.z, 3.2);
+        moonDot.col.setXYZW(0, 0.75, 0.74, 0.72, 1.4);
+        moonDot.pos.setXYZW(1, 0, 0, 0, 4.2);
+        moonDot.col.setXYZW(1, 0.45, 0.65, 1.0, 2.0);
+        earthScene.add(moonDot.sprite);
+      }
 
       // ── stellar neighbourhood + Milky Way band (pc) ──
       const starScene = makeLayer('stars', PC_M, new Vector3(), 1e-4, 4e4);
@@ -360,6 +491,7 @@ export default (): CosmicScene => {
       web.uniforms.contrast.value = params.web.contrast;
       web.uniforms.reveal.value = params.web.reveal;
       addSphereFade(web.material, sphereC, sphere0, sphere1);
+      addSlabFade(web.material, sphereC, slabN, slab0, slab1);
       addNearFade(web.material, webNear0, webNear1);
       webTiles = tileBox(web.material, web.count, Math.round(web.count * params.web.outerFraction));
       webScene.add(webRot);
@@ -370,6 +502,7 @@ export default (): CosmicScene => {
       gal.uniforms.maturity.value = 1;
       gal.uniforms.mergeClock.value = 2;
       addSphereFade(gal.material, sphereC, sphere0, sphere1);
+      addSlabFade(gal.material, sphereC, slabN, slab0, slab1);
       galTiles = tileBox(gal.material, gal.count, gal.count);
       webRot.add(galTiles.group);
       // Put our own halo at the centre: shift every tile so the Milky Way peak lands on the origin.
@@ -412,27 +545,11 @@ export default (): CosmicScene => {
 
       // ── camera directions (from target toward camera) ──
       const eclN = eclipticPole(new Vector3());
-      // Earth: a sunlit gibbous Earth (Sun ~55° from the view axis) with today's Moon off to the side, in frame
-      // once we pull back. Brute-force search over directions.
+      // Earth: life's closing camera (azimuth, elevation, distance around the planet), in the world frame.
       {
-        const moonDir = earth.moon.position.clone().normalize();
-        const cand = new Vector3();
-        let best = -Infinity;
-        for (let i = 0; i < 4000; i++) {
-          const zc = 1 - (2 * (i + 0.5)) / 4000;
-          const ph = i * 2.399963;
-          const rr = Math.sqrt(1 - zc * zc);
-          cand.set(rr * Math.cos(ph), zc, rr * Math.sin(ph));
-          const phase = Math.acos(Math.min(1, Math.max(-1, cand.dot(sunDirFromEarth))));
-          const moonAng = Math.acos(Math.min(1, Math.max(-1, cand.dot(moonDir))));
-          // view axis = −cand (camera looks back at Earth); Moon should sit ~20–30° off the line of sight beyond Earth.
-          const moonOff = Math.abs(Math.PI - moonAng - 0.45);
-          const score = -Math.abs(phase - 0.95) * 2 - moonOff - Math.abs(cand.dot(yAxis)) * 0.3;
-          if (score > best) {
-            best = score;
-            dirEarth.copy(cand);
-          }
-        }
+        const az = (HANDOFF.camera.az * Math.PI) / 180;
+        const el = (HANDOFF.camera.el * Math.PI) / 180;
+        dirEarth.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).applyQuaternion(lifeToWorld);
       }
       // Solar system: above the ecliptic, same azimuth.
       tmp.copy(dirEarth).addScaledVector(eclN, -dirEarth.dot(eclN)).normalize();
@@ -476,13 +593,16 @@ export default (): CosmicScene => {
       dir.applyAxisAngle(yAxis, elapsed * params.orbitRate * smoothstep(24.5, 26.5, x));
       camM.copy(target).addScaledVector(dir, D);
 
+      // Up: Earth's axis (as in life's frame) turning to the North Galactic Pole as we leave the solar system.
+      up.copy(earthUp).lerp(yAxis, smootherstep(8.6, 12.0, x)).normalize();
+
       // Per-layer cameras.
       for (const name of order) {
         const L = layers[name]!;
         const c = L.camera;
         c.position.copy(camM).sub(L.origin).divideScalar(L.unit);
         tmp.copy(target).sub(L.origin).divideScalar(L.unit);
-        c.up.copy(yAxis);
+        c.up.copy(up);
         c.lookAt(tmp);
         const dl = D / L.unit;
         c.near = Math.max(dl * L.near, 1e-6);
@@ -495,8 +615,11 @@ export default (): CosmicScene => {
       const vEarth = fade(x, V.earth!);
       layers.earth!.visible = vEarth > 1e-3;
       earth.uniforms.opacity.value = vEarth;
-      earth.uniforms.time.value = elapsed;
-      earth.globe.rotation.y = elapsed * 0.035 + 2.2;
+      planet.u.time.value = elapsed;
+      planet.group.visible = vEarth > 1e-3;
+      // Earth–Moon system: orbit and dots while the discs are too small to see.
+      moonOrbitVis.value = smoothstep(8.4, 9.0, x) * (1 - smoothstep(10.2, 10.9, x));
+      moonDot.uniforms.opacity.value = smoothstep(8.7, 9.3, x) * (1 - smoothstep(10.2, 10.9, x));
 
       // Sun, planets, orbits, belts.
       const vSolar = fade(x, V.solar!);
@@ -555,11 +678,16 @@ export default (): CosmicScene => {
       tmp.set(0, 0, 0);
       webTiles.place(tmp, 1, mwPeakShift, tmp2.set(0, 0, 0), params.web.sphere[1]);
       galTiles.place(tmp, 1, mwPeakShift, tmp2, params.web.sphere[1]);
-      web.uniforms.brightness.value = params.web.brightness * vWeb;
+      web.uniforms.brightness.value = params.web.brightness * vWeb * (1 + 1.6 * (1 - smoothstep(25.0, 25.5, x)));
       gal.uniforms.brightness.value = vWeb;
       gal.uniforms.milkyWay.value = smoothstep(24.2, 24.8, x);
       gal.uniforms.sf.value = madauDickinsonSFR(0) / 0.133;
       const dWeb = D / layers.web!.unit;
+      // A face-on slab (~30 Mpc thick) while we look at the web, relaxing into the full ball as we leave it.
+      slabN.value.copy(dir);
+      const slabOpen = smoothstep(25.0, 25.5, x);
+      slab0.value = params.web.slab[0] + 40 * slabOpen;
+      slab1.value = params.web.slab[1] + 40 * slabOpen;
       webNear0.value = dWeb * 0.15;
       webNear1.value = dWeb * 0.4;
       web.uniforms.size.value = Math.min(0.8, Math.max(0.12, dWeb * 0.035));
@@ -617,6 +745,11 @@ export default (): CosmicScene => {
 
     dispose() {
       earth.dispose();
+      planet.dispose();
+      moonOrbitGeo.dispose();
+      moonOrbitMat.dispose();
+      moonDot.dispose();
+      geo?.release();
       solar.dispose();
       hood.dispose();
       mw.dispose();

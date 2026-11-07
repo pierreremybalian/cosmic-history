@@ -75,6 +75,7 @@ export const params = {
   /** Glow brightness: intensity = intensityEnd · (T / tEndK)^intensityPower (∝ T⁴ in reality; compressed). */
   intensityEnd: 0.5,
   intensityPower: 0.2,
+  hotBoost: 1.5,
   /** Fluctuation look (exaggerated, see note). Contrast: strong while the structure is fine (early), gentler as it grows and as the map takes over. */
   contrast: [2.6, 1.8] as const,
   saturate: 1.4,
@@ -84,15 +85,18 @@ export const params = {
   /** Primordial field box size, world units: grows over the photon era (structures grow). */
   boxEarly: 6,
   boxLate: 26,
+  boxGrowth: 2,
+  boxMid: 13,
   /** Plasma era (fades as the Planck pattern rises): stream speed (world units/s), elongation along the stream,
    *  fine-scale weight, incandescent sheets, warp, contrast, ringing rates (cycles per wave-clock unit). */
+  plasmaUntilKyr: [200, 320] as const,
   streamSpeed: [0.12, 0.42] as const,
   stretch: 2.2,
   fineAmp: 0.75,
   ridge: 0.9,
   warp: 0.15,
-  plasmaContrast: 1.35,
-  plasmaVar: 0.9,
+  plasmaContrast: 2.4,
+  plasmaVar: 1.15,
   ringMid: 1.4,
   ringFine: 3.1,
   driftSpeed: [0.0021, 0.0013, -0.0017] as const,
@@ -110,7 +114,7 @@ export const params = {
   waveRate: 0.09,
   waveRadius: 7,
   waveWidth: 0.06,
-  waveGain: 14,
+  waveGain: 3,
   /** Dark-matter wells: Ω_m range over which they deepen (equality at 0.5), amplitude. */
   dmOmega: [0.44, 0.68] as const,
   dmAmp: 1.6,
@@ -136,6 +140,8 @@ export const params = {
   cmbGain: 0.62,
   /** The fog sees the pattern blurred (less variance), so it gets more gain; matches the wall's look as it clears. */
   cmbFogGain: 1.7,
+  /** Standard deviation of the blurred ΔT/300 µK seen in the fog (for brightness normalisation). */
+  cmbBlurredStd: 0.25,
   mapGain: 0.52,
   redshiftDex: 0.1,
   rimFrom: 0.88,
@@ -205,6 +211,8 @@ const LOG_T0 = Math.log10(photon.tStart);
 const LOG_T1 = Math.log10(photon.tEnd);
 const LOG_CMB0 = Math.log10(params.cmbFromKyr * KYR_S);
 const LOG_CMB1 = Math.log10(params.cmbToKyr * KYR_S);
+const LOG_PLASMA0 = Math.log10(params.plasmaUntilKyr[0] * KYR_S);
+const LOG_PLASMA1 = Math.log10(params.plasmaUntilKyr[1] * KYR_S);
 const T_END_K = 2932; // only a normalisation for brightness (≈ T at the chapter end; brightness ∝ (T/T_END)^p)
 
 export default (): CosmicScene => {
@@ -347,29 +355,34 @@ export default (): CosmicScene => {
       su.scanGain.value = P.scanGain;
       const redshift = smoothstep(P.mapFrom, P.mapTo + 0.02, uRec);
       su.logT.value = Math.log10(g.T) - P.redshiftDex * redshift;
-      su.intensity.value = P.intensityEnd * Math.pow(Math.max(g.T, 1) / T_END_K, P.intensityPower);
+      // White-hot at the start: an extra exposure boost that fades over the first third of the era.
+      const hot = 1 + P.hotBoost * (1 - smoothstep(0, 0.35, sPh));
+      su.intensity.value = P.intensityEnd * Math.pow(Math.max(g.T, 1) / T_END_K, P.intensityPower) * hot;
       su.physGain.value = 1 - 0.25 * redshift;
       su.mapMix.value = mapMix;
       su.cmbGain.value = P.cmbGain;
       su.cmbFogGain.value = P.cmbFogGain;
       su.mapGain.value = P.mapGain;
-      const cmbRise = smoothstep(LOG_CMB0, LOG_CMB1, logt);
-      const contrast = lerp(P.contrast[1], P.plasmaContrast, 1 - cmbRise);
+      const contrast = lerp(P.contrast[1], P.plasmaContrast, 1 - smoothstep(LOG_PLASMA0, LOG_PLASMA1, logt)); // = plasma
       su.contrast.value = contrast;
-      su.norm.value = 0.5 * contrast * contrast * P.plasmaVar;
       su.tempVar.value = P.tempVar;
       su.saturate.value = P.saturate;
 
       // Fluctuation sources.
       const cmbW = smoothstep(LOG_CMB0, LOG_CMB1, logt);
       su.cmbW.value = cmbW;
-      su.noiseW.value = (1 - 0.8 * cmbW) * (1 - 0.8 * clear);
+      const noiseW = (1 - 0.8 * cmbW) * (1 - 0.8 * clear);
+      su.noiseW.value = noiseW;
+      // Log-normal mean of the integrated emission: subtract ½c²·var(δ) so brightness tracks `intensity` as the
+      // fluctuation sources change (field noise fading, Planck pattern rising).
+      const cmbStd = P.cmbFogGain * P.cmbBlurredStd * cmbW;
+      su.norm.value = 0.5 * contrast * contrast * (P.plasmaVar * noiseW * noiseW + cmbStd * cmbStd);
       su.eclX.value.copy(ECL_X);
       su.eclY.value.copy(ECL_Y);
       su.sweepStart.value = LAMBDA_GC - P.sweepLead * DEG;
       // Plasma look: true emission–absorption, streaming, stretched, ringing; hands over to the averaged
-      // recombination look as the Planck pattern rises (55 → 300 kyr).
-      const plasma = 1 - cmbW;
+      // recombination look across the chapter boundary (200 → 320 kyr) while the Planck pattern rises.
+      const plasma = 1 - smoothstep(LOG_PLASMA0, LOG_PLASMA1, logt);
       su.plasma.value = plasma;
       su.stretch.value = lerp(1, P.stretch, plasma);
       su.fineAmp.value = P.fineAmp;
@@ -378,7 +391,9 @@ export default (): CosmicScene => {
       stream += dt * lerp(P.streamSpeed[0], P.streamSpeed[1], plasma) * (1 - clear);
       su.flowZ.value = stream;
       su.blur.value = P.blurFog * Math.pow(1 - clear, 1.5) + P.blurMin;
-      const box = P.boxEarly * Math.pow(P.boxLate / P.boxEarly, sPh);
+      // Structures stay fine through most of the era and grow toward the recombination look at the end.
+      const boxPl = P.boxEarly * Math.pow(P.boxMid / P.boxEarly, Math.pow(sPh, P.boxGrowth));
+      const box = lerp(P.boxLate, boxPl, plasma);
       su.freq.value = 1 / box;
       const grow = box / P.boxLate;
       for (let k = 0; k < 3; k++) drift[k]! += dt * P.driftSpeed[k]!;

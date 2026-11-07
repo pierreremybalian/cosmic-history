@@ -49,7 +49,8 @@ export interface Earth {
   dispose(): void;
 }
 
-export function createEarth(sunColor: Vector3): Earth {
+/** `globe: false` builds only the Moon (the Earth itself then comes from the life scene's planet). */
+export function createEarth(sunColor: Vector3, opts: { globe?: boolean } = {}): Earth {
   const u = { sunDir: uniform(new Vector3(1, 0, 0)), time: uniform(0), exposure: uniform(1), opacity: uniform(1) };
   const sun = vec3(sunColor.x, sunColor.y, sunColor.z);
 
@@ -142,8 +143,10 @@ export function createEarth(sunColor: Vector3): Earth {
   const tilt = new Group();
   tilt.add(globe);
   const group = new Group();
-  group.add(tilt);
-  group.add(atmo);
+  if (opts.globe !== false) {
+    group.add(tilt);
+    group.add(atmo);
+  }
   group.add(moon);
   return {
     group,

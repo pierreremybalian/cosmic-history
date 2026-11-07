@@ -1032,3 +1032,15 @@ export function createGalaxySprites(list: GalaxySpriteSpec[], resolution: Vec2Un
     },
   };
 }
+
+/**
+ * Fade a sprite material's instances by distance from a plane through `center` with normal `normal` (world):
+ * visible within h0, gone by h1. A thin slab shows crisp filaments, like the slices of N-body simulations.
+ */
+export function addSlabFade(material: SpriteNodeMaterial, center: Vec3Uniform, normal: Vec3Uniform, h0: FloatUniform, h1: FloatUniform): void {
+  const pos = material.positionNode as V3;
+  const world = varying(modelWorldMatrix.mul(vec4(pos, 1)).xyz, 'vSlabFadeWorld');
+  const f = float(1).sub(smoothstep(h0, h1, abs(world.sub(center).dot(normal))));
+  material.colorNode = (material.colorNode as V3).mul(f);
+  material.opacityNode = (material.opacityNode as F).mul(f);
+}
