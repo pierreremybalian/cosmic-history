@@ -92,9 +92,9 @@ export const params = {
   ] as const,
   /** Global ice (snowball episodes). */
   snowball: [
-    [2440, 0],
-    [2380, 0.25],
-    [2300, 0.95],
+    [2370, 0],
+    [2320, 0.4],
+    [2290, 0.95],
     [2240, 1],
     [2190, 0.3],
     [2150, 0],
@@ -307,4 +307,4 @@ export function northIceSheet(Lmyr: number): number {
 }
 
 /** Organic haze extinction at peak (1/m at the base): strongly blue-absorbing, like Titan's (Arney et al. 2016). */
-export const ARCHEAN_HAZE: AtmosphereSpec['haze'] = [4.0e-5, 9.0e-5, 2.2e-4];
+export const ARCHEAN_HAZE: AtmosphereSpec['haze'] = [1.5e-5, 3.3e-5, 8.0e-5];

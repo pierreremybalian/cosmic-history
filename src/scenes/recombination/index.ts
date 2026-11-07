@@ -32,8 +32,7 @@ import { KYR_S, X_E_RESIDUAL } from '../../physics/constants.ts';
 import { blackbodyRGB } from '../../physics/blackbody.ts';
 import { EMISSION_LINES_NM, lineColor } from '../../shared/color.ts';
 import { clamp01, easeInOutCubic, lerp, mulberry32, smoothstep } from '../../shared/math.ts';
-import { chapterById, timeInChapter } from '../../time/chapters.ts';
-import { createGlobals, globalsAt } from '../../physics/cosmology.ts';
+import { chapterById } from '../../time/chapters.ts';
 import { sceneRange } from '../sceneRange.ts';
 import type { Globals } from '../../physics/cosmology.ts';
 import type { CosmicScene, RenderContext } from '../types.ts';
@@ -179,12 +178,6 @@ function shellSeeds(n: number, [r0, r1]: readonly [number, number], seed: number
   return new InstancedBufferAttribute(arr, 4);
 }
 
-const DEV_CHAPTER =
-  import.meta.env.DEV && typeof location !== 'undefined' && location.pathname.startsWith('/dev/scenes')
-    ? (chapterById(new URLSearchParams(location.search).get('chapter') ?? '') ?? null)
-    : null;
-const gDev = createGlobals();
-
 // Ecliptic frame in Galactic coordinates (J2000; IAU): north ecliptic pole and the vernal equinox (λ = 0).
 const DEG = Math.PI / 180;
 const NEP_LB = [96.3843, 29.8114] as const;
@@ -318,10 +311,8 @@ export default (): CosmicScene => {
       await renderer.compileAsync(scene, camera);
     },
 
-    update(local: number, gIn: Globals, dt: number, elapsed: number) {
+    update(_local: number, g: Globals, dt: number, elapsed: number) {
       const P = params;
-      // Dev harness only: /dev/scenes/?scene=recombination&chapter=recombination maps `local` to that chapter.
-      const g = DEV_CHAPTER ? globalsAt(timeInChapter(DEV_CHAPTER, local).t, gDev) : gIn;
       const R = P.radius;
       // Scene clocks from g (local restarts at the photon → recombination boundary).
       const logt = g.log10t;

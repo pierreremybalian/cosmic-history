@@ -1,6 +1,7 @@
-// Force strands for the planck scene: instanced glowing tubes braided into one bundle (the unified force)
-// that peel apart: gravity first (dimming to a dark violet), then the strong force (colour-charge flicker),
-// leaving the electroweak bundle that the qgp chapter later splits at the Higgs moment.
+// Force strands for the planck scene: many thin light filaments that flow like field lines. They fan in from
+// the foam on both sides, converge into one braid through the unified field (pinch at its centre) and fan
+// out again. At the beats they unzip: gravity first (drifting away and dimming to a dark violet), then the
+// strong force (colour-charge flicker), leaving the electroweak braid that qgp later splits at the Higgs.
 
 import { AdditiveBlending, Color, InstancedMesh, LineCurve3, MeshBasicNodeMaterial, TubeGeometry, Vector3 } from 'three/webgpu';
 import {
@@ -27,10 +28,10 @@ import {
 import type { Node } from 'three/webgpu';
 
 export const STRANDS = {
-  perGroup: 4,
+  perGroup: 10,
   groups: 3, // 0 gravity, 1 strong, 2 electroweak
-  tubularSegments: 160,
-  radialSegments: 6,
+  tubularSegments: 200,
+  radialSegments: 5,
 } as const;
 
 const _mkF = () => uniform(0);
@@ -42,16 +43,19 @@ type C = ReturnType<typeof _mkC>;
 
 export interface StrandUniforms {
   centre: V3;
-  /** Ring plane: two orthonormal in-plane axes and its normal. */
+  /** Braid axis (unit) and two unit vectors perpendicular to it. */
   axis: V3;
   axisN: V3;
   axisB: V3;
-  ringRadius: F;
-  /** Arc start angle and angular span (radians); spin = rotation per unit phase. */
-  arcStart: F;
-  arcSpan: F;
-  spin: F;
+  /** Half-length of the braid (world) and its S-shaped bend (world, along axisN / axisB). */
+  halfLength: F;
+  bendN: F;
+  bendB: F;
+  /** Radius of the braid at its pinch (field centre) and at the fanned-out ends (world). */
   braidRadius: F;
+  fanRadius: F;
+  /** Curl-like meander of each filament (world). */
+  wobble: F;
   twist: F;
   /** Integrated flow phase. */
   phase: F;
@@ -61,11 +65,11 @@ export interface StrandUniforms {
   reveal: F;
   gravitySplit: F;
   strongSplit: F;
-  /** Peeled strands move outward (sep, world) and out of the ring plane (lift, world). */
+  /** Peeled strands move away along these directions (world units at full split). */
+  gravityDir: V3;
+  strongDir: V3;
   gravitySep: F;
   strongSep: F;
-  gravityLift: F;
-  strongLift: F;
   /** Strands behind the field's centre plane are dimmed by this factor (depth cue). */
   backDim: F;
   flickerPhase: F;
@@ -89,11 +93,12 @@ export function createForceStrands(): ForceStrands {
     axis: uniform(new Vector3(1, 0, 0)),
     axisN: uniform(new Vector3(0, 1, 0)),
     axisB: uniform(new Vector3(0, 0, 1)),
-    ringRadius: uniform(1.5),
-    arcStart: uniform(0),
-    arcSpan: uniform(4),
-    spin: uniform(0.05),
+    halfLength: uniform(2.4),
+    bendN: uniform(0.3),
+    bendB: uniform(0.2),
     braidRadius: uniform(0.05),
+    fanRadius: uniform(0.9),
+    wobble: uniform(0.08),
     twist: uniform(5),
     phase: uniform(0),
     tubeRadius: uniform(0.012),
@@ -101,10 +106,10 @@ export function createForceStrands(): ForceStrands {
     reveal: uniform(1),
     gravitySplit: uniform(0),
     strongSplit: uniform(0),
+    gravityDir: uniform(new Vector3(0, -1, 0)),
+    strongDir: uniform(new Vector3(0, 1, 0)),
     gravitySep: uniform(0.8),
-    strongSep: uniform(0.4),
-    gravityLift: uniform(0.3),
-    strongLift: uniform(0.3),
+    strongSep: uniform(0.5),
     backDim: uniform(0.35),
     flickerPhase: uniform(0),
     unified: uniform(new Color(0.75, 0.85, 1)),
@@ -123,32 +128,40 @@ export function createForceStrands(): ForceStrands {
   const isG = float(1).sub(clamp(group, 0, 1)); // group 0
   const isS = clamp(float(1).sub(abs(group.sub(1))), 0, 1); // group 1
 
-  // Strand centreline at parameter s ∈ [0,1]: an arc of a ring around the field, braided.
+  // Strand centreline at parameter s ∈ [0,1]: a field line of a braid that pinches through the field.
   const path = (s: Node<'float'>): Node<'vec3'> => {
     const x = s.mul(2).sub(1);
-    const phi = u.arcStart.add(u.arcSpan.mul(s)).add(u.phase.mul(u.spin));
-    const radial = u.axis.mul(cos(phi)).add(u.axisN.mul(sin(phi)));
-    // Peel: a zipper front runs from the s = 1 end to the s = 0 end as split goes 0 → 1.
+    const ax = x.abs();
+    const bow = float(1).sub(x.mul(x));
+    const base = u.centre
+      .add(u.axis.mul(x.mul(u.halfLength)))
+      .add(u.axisN.mul(sin(x.mul(1.5708)).mul(u.bendN)))
+      .add(u.axisB.mul(bow.mul(u.bendB)));
+    // Peel: a zipper front runs from the s = 1 end to the s = 0 end as split goes 0 → 1; a peeled strand
+    // also stops converging (its pinch opens).
     const gFront = mix(float(1.05), float(-0.5), u.gravitySplit);
     const sFront = mix(float(1.05), float(-0.5), u.strongSplit);
     const gPeel = smoothstep(gFront, gFront.add(0.45), s).mul(isG);
     const sPeel = smoothstep(sFront, sFront.add(0.45), s).mul(isS);
-    const wobble = sin(x.mul(3.1).add(u.phase.mul(0.35)).add(seed.mul(6.28))).mul(0.08);
-    const ringR = u.ringRadius
-      .add(u.gravitySep.mul(gPeel).mul(float(1).add(wobble).add(k.mul(0.04))))
-      .add(u.strongSep.mul(sPeel).mul(float(1).add(wobble)));
-    const lift = u.axisB.mul(u.gravityLift.mul(gPeel).negate().add(u.strongLift.mul(sPeel)));
-    const base = u.centre.add(radial.mul(ringR)).add(lift);
-    // Braid: every strand winds round the arc; each group sits at its own third of the circle.
-    // Loose, organic braid: each strand has its own twist rate, radius and a slow meander.
+    const peel = gPeel.add(sPeel);
+    // Converging braid: tight at the centre, fanned out towards the ends; each filament at its own depth in it.
+    const pinch = mix(u.braidRadius, u.fanRadius, ax.pow(1.6).add(peel.mul(0.35)));
+    const rad = pinch.mul(float(0.25).add(seed.mul(seed).mul(0.75)).add(k.mul(0.015)));
     const ang = iF.mul(2.39996)
-      .add(group.mul(2.0944))
-      .add(x.mul(u.twist).mul(float(0.8).add(seed.mul(0.4))))
-      .add(u.phase.mul(float(0.6).add(seed.mul(0.5))));
-    const meander = sin(x.mul(float(5).add(seed.mul(4))).add(u.phase.mul(0.5)).add(seed.mul(9))).mul(0.25);
-    const rb = u.braidRadius.mul(float(0.65).add(seed.mul(0.5)).add(meander));
-    const braid = radial.mul(cos(ang)).add(u.axisB.mul(sin(ang))).mul(rb);
-    return base.add(braid);
+      .add(x.mul(u.twist).mul(float(0.75).add(seed.mul(0.5))))
+      .add(u.phase.mul(float(0.5).add(seed.mul(0.6))));
+    const braid = u.axisN.mul(cos(ang)).add(u.axisB.mul(sin(ang))).mul(rad);
+    // Curl-like meander: two incommensurate waves per filament, stronger away from the pinch.
+    const f1 = float(4.3).add(seed.mul(3.1));
+    const f2 = float(6.7).add(seed.mul(2.3));
+    const meander = u.axisN
+      .mul(sin(x.mul(f1).add(u.phase.mul(0.7)).add(seed.mul(9.1))))
+      .add(u.axisB.mul(cos(x.mul(f2).sub(u.phase.mul(0.55)).add(seed.mul(4.7)))))
+      .mul(u.wobble.mul(float(0.3).add(ax)));
+    const lift = bow.mul(0.6).add(0.4);
+    const away = u.gravityDir.mul(u.gravitySep.mul(gPeel).mul(lift).mul(float(0.8).add(seed.mul(0.4))))
+      .add(u.strongDir.mul(u.strongSep.mul(sPeel).mul(lift).mul(float(0.8).add(seed.mul(0.4)))));
+    return base.add(braid).add(meander).add(away);
   };
 
   const s = positionGeometry.x;
@@ -173,12 +186,12 @@ export function createForceStrands(): ForceStrands {
   const fS = clamp(float(1).sub(abs(vG.sub(1))), 0, 1);
   const fE = clamp(vG.sub(1), 0, 1);
   const view = normalize(cameraPosition.sub(positionWorld));
-  const behind = smoothstep(-0.15, 0.25, dot(positionWorld.sub(u.centre), view.negate()));
+  const behind = smoothstep(-0.3, 0.6, dot(positionWorld.sub(u.centre), view.negate()));
   const depthDim = mix(float(1), u.backDim, behind);
   const facing = abs(dot(normalize(vN), view));
   const glow = facing.mul(facing).mul(0.8).add(0.2);
   const xs = vS.mul(2).sub(1).abs();
-  const along = smoothstep(0, 0.2, vS).mul(float(1).sub(smoothstep(0.8, 1, vS)));
+  const along = smoothstep(0.02, 0.3, vS).mul(float(1).sub(smoothstep(0.7, 0.98, vS)));
   const grown = float(1).sub(smoothstep(u.reveal.sub(0.12), u.reveal, xs));
   const pulse = sin(vS.mul(22).sub(u.phase.mul(2.2)).add(vSeed.mul(6.28))).mul(0.5).add(0.5).pow(3).mul(0.9).add(0.55);
 

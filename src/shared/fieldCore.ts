@@ -146,6 +146,18 @@ export function fft3d(re: Float64Array, im: Float64Array, n: number, inverse: bo
 
 const freq = (i: number, n: number) => (i < n / 2 ? i : i - n);
 
+/** 32-bit hash of (seed, integer mode) for per-mode deterministic noise. */
+function modeSeed(seed: number, i: number, j: number, l: number): number {
+  let h = (seed ^ 0x9e3779b9) >>> 0;
+  for (const v of [i, j, l]) {
+    h = Math.imul(h ^ (v + 0x7f4a7c15), 0x85ebca6b) >>> 0;
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35) >>> 0;
+    h ^= h >>> 16;
+  }
+  return h;
+}
+
 function rms(a: Float32Array, stride = 1): number {
   let s = 0;
   for (let i = 0; i < a.length; i += stride) s += a[i]! * a[i]!;
@@ -159,11 +171,44 @@ export function generateField(p: FieldParams): FieldData {
   const N3 = n * n * n;
   const rand = mulberry32(p.seed);
 
-  // White noise → Fourier space. FFT of real noise is Hermitian by construction.
+  // White noise drawn directly in Fourier space, one hashed complex Gaussian per integer mode (i, j, l).
+  // Every grid size therefore shares the same large-scale modes: the 64³ low tier is a low-pass of the same
+  // universe as 128³. Hermitian symmetry W(−k) = W(k)* is imposed explicitly. Scaled by √N³ to match the
+  // FFT of unit-variance real white noise, so the amplitudes below are unchanged.
   const wr = new Float64Array(N3);
   const wi = new Float64Array(N3);
-  for (let i = 0; i < N3; i++) wr[i] = gaussian(rand);
-  fft3d(wr, wi, n, false);
+  const sqrtN3 = Math.sqrt(N3);
+  const half = n / 2;
+  for (let z = 0; z < n; z++)
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const fx = freq(x, n);
+        const fy = freq(y, n);
+        const fz = freq(z, n);
+        // Nyquist planes are their own conjugates; treat ±n/2 as +n/2.
+        const sx = fx === -half ? half : fx;
+        const sy = fy === -half ? half : fy;
+        const sz = fz === -half ? half : fz;
+        const nx = -sx === -half ? half : -sx;
+        const ny = -sy === -half ? half : -sy;
+        const nz = -sz === -half ? half : -sz;
+        const selfConj = sx === nx && sy === ny && sz === nz;
+        // Canonical member of the ±k pair: lexicographically larger (sz, sy, sx).
+        const positive = sz > nz || (sz === nz && (sy > ny || (sy === ny && sx >= nx)));
+        const [cx, cy, cz] = positive ? [sx, sy, sz] : [nx, ny, nz];
+        const r = mulberry32(modeSeed(p.seed, cx, cy, cz));
+        const i = (z * n + y) * n + x;
+        if (selfConj) {
+          wr[i] = gaussian(r) * sqrtN3;
+          wi[i] = 0;
+        } else {
+          const re = (gaussian(r) * sqrtN3) / Math.SQRT2;
+          const im = (gaussian(r) * sqrtN3) / Math.SQRT2;
+          wr[i] = re;
+          wi[i] = positive ? im : -im;
+        }
+      }
+  void rand;
 
   const kf = (2 * Math.PI) / L; // fundamental mode, h/Mpc
   const cellVol = Math.pow(L / n, 3);

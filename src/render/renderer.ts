@@ -142,8 +142,14 @@ export async function createEngine(opts: EngineOptions): Promise<Engine | null> 
     const next = tierFromProbe(quality.name, median);
     console.info(`[quality] backend ${backend}, guess ${quality.name}, probe median ${median.toFixed(1)} ms → ${next}`);
     if (next !== quality.name) {
+      const old = quality;
       quality = tier(next, backend, true);
-      field = createPrimordialField(quality.fieldGrid, quality.particles);
+      // A downgrade keeps the field already being built (scenes draw min(count, tier) particles; every grid size is
+      // the same universe). Only a larger grid or more particles needs a new one.
+      if (quality.fieldGrid > old.fieldGrid || quality.particles > old.particles) {
+        field.dispose();
+        field = createPrimordialField(quality.fieldGrid, quality.particles);
+      }
       manager.setContext({ quality, field });
       applySize();
     }
@@ -333,7 +339,7 @@ export async function createEngine(opts: EngineOptions): Promise<Engine | null> 
       changingTier = true;
       const old = quality;
       quality = tier(name, backend, auto);
-      if (quality.fieldGrid !== old.fieldGrid || quality.particles > (field.particles?.side ?? 0) ** 3) {
+      if (quality.fieldGrid > field.n || quality.particles > Math.max(old.particles, (field.particles?.side ?? 0) ** 3)) {
         field.dispose();
         field = createPrimordialField(quality.fieldGrid, quality.particles);
       }

@@ -6,8 +6,8 @@
 // Plateau borders (edges where three bubbles meet, √F3 − √F1 → 0) as thin lines, vertices (four bubbles)
 // as white-hot nodes, plus soft bubble skins and a faint haze. The march sphere-traces towards the edges
 // ((√F3 − √F1)/2 bounds the distance to any edge), so thin lines are never skipped at any step count.
-// Planck's single bubble and gravity veil are thin spherical layers integrated analytically where the ray
-// crosses them (no sampling, so no aliasing).
+// Planck adds a swirling luminous field with a white-hot core (no surface), and gravity's darker layer: a net
+// of dark filaments on an expanding shell (the march shortens its steps near that shell).
 //
 // The volume is raymarched at reduced resolution into its own target (see FoamVolume.target) and
 // up-sampled by a full-screen quad drawn in the scene's main pass.
@@ -36,6 +36,8 @@ import {
   Loop,
   cameraPosition,
   clamp,
+  cos,
+  cross,
   dot,
   exp,
   float,
@@ -50,6 +52,7 @@ import {
   positionWorld,
   screenCoordinate,
   select,
+  sin,
   smoothstep,
   sqrt,
   texture,
@@ -227,15 +230,16 @@ export interface FoamUniforms {
   absorb: F;
   /** Envelope squash along world z (> 1 = thinner along the view axis). */
   zSquash: F;
-  /** Single luminous bubble (planck): radius and width in local units, and gain. */
-  shellRadius: F;
-  shellWidth: F;
-  shellGain: F;
-  /** Noise frequency on the analytic layers (relative to the cell frequency). */
-  layerNoiseScale: F;
-  /** Corona outside the bubble: gain and e-folding length (local units). */
-  coronaGain: F;
-  coronaLength: F;
+  /** Unified field (planck): gain, radius (local), white-hot core gain, swirl (rad), swirl phase, axis, freq. */
+  fieldGain: F;
+  fieldRadius: F;
+  fieldHot: F;
+  fieldSwirl: F;
+  fieldPhase: F;
+  fieldAxis: V3;
+  fieldFreq: F;
+  /** Frequency of the gravity net on its shell (noise tiles per radian-ish unit of direction). */
+  latticeScale: F;
   /** Centre offset of the gravity veil (local units): it lifts off one side first. */
   gravityOffset: V3;
   /** How fast films seen through other films sink from hot to deep (exponent on transmittance). */
@@ -276,8 +280,8 @@ export interface FoamVolumeOptions {
   gravity?: boolean;
   /** Include the colour-charge flicker (planck). */
   flicker?: boolean;
-  /** Include the single luminous bubble (planck's unified field). */
-  bubble?: boolean;
+  /** Include the swirling luminous unified field (planck). */
+  field?: boolean;
   /** Composite the up-sampled volume additively over what is already drawn (inflation) instead of opaquely. */
   additive?: boolean;
 }
@@ -320,12 +324,14 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     coreRadius: uniform(0.3),
     absorb: uniform(0.4),
     zSquash: uniform(1),
-    shellRadius: uniform(0.4),
-    shellWidth: uniform(0.02),
-    shellGain: uniform(0),
-    layerNoiseScale: uniform(0.25),
-    coronaGain: uniform(0),
-    coronaLength: uniform(0.08),
+    fieldGain: uniform(0),
+    fieldRadius: uniform(0.25),
+    fieldHot: uniform(2),
+    fieldSwirl: uniform(2),
+    fieldPhase: uniform(0),
+    fieldAxis: uniform(new Vector3(0, 1, 0)),
+    fieldFreq: uniform(1.2),
+    latticeScale: uniform(0.9),
     gravityOffset: uniform(new Vector3()),
     depthTint: uniform(1.5),
     maxStepMul: uniform(2),
@@ -391,7 +397,7 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     const chord = max(t1.sub(t0), 1e-4);
     const cellW = u.radius.mul(u.stretch).div(u.scale); // world size of one cell
     const maxW = chord.div(steps).mul(u.maxStepMul);
-    const minW = cellW.mul(u.edgeWidth).mul(0.6);
+    const minW = min(cellW.mul(u.edgeWidth).mul(0.6), u.gravityWidth.mul(u.radius).mul(0.6));
     const jitter = interleavedGradientNoise(screenCoordinate.xy);
     const t = t0.add(maxW.mul(jitter).mul(0.5)).toVar();
     const dtW = float(0).toVar();
@@ -401,58 +407,6 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     const charge = vec3(0).toVar();
     const ph = u.phase;
 
-    // Thin spherical layers around the foam (planck's bubble and gravity veil) are integrated analytically
-    // where the ray crosses them: a Gaussian shell of width w seen at angle θ to its normal contributes
-    // w√π / cos θ, capped at grazing incidence (limb brightening without any sampling).
-    const ocL = ro.sub(u.centre).div(u.radius);
-    const crossing = (R: Node<'float'>, w: Node<'float'>, offset: Node<'vec3'> | V3) => {
-      const oc = ocL.sub(offset);
-      const bL = dot(oc, rdW);
-      const b2 = max(dot(oc, oc).sub(bL.mul(bL)), 0); // squared miss distance (local)
-      const hh = R.mul(R).sub(b2);
-      const cosT = sqrt(max(hh, 0)).div(R);
-      const graze = sqrt(w.mul(2).div(R));
-      const outside = gauss(max(sqrt(b2).sub(R), 0), w);
-      const amount = w.mul(1.7725).div(max(cosT, graze)).mul(outside);
-      const half = sqrt(max(hh, 0));
-      return { amount, tFront: bL.negate().sub(half), tBack: bL.negate().add(half), oc };
-    };
-    const hueOf = (x: Node<'float'>) => {
-      const k = fract(x).mul(3);
-      const wr = clamp(float(1).sub(k.sub(0.5).abs().mul(1.4)), 0, 1).add(clamp(float(1).sub(k.sub(3.5).abs().mul(1.4)), 0, 1));
-      const wg = clamp(float(1).sub(k.sub(1.5).abs().mul(1.4)), 0, 1);
-      const wb = clamp(float(1).sub(k.sub(2.5).abs().mul(1.4)), 0, 1);
-      return u.colourR.mul(wr).add(u.colourG.mul(wg)).add(u.colourB.mul(wb));
-    };
-    // One layer crossing: emission (with optional colour charge) and absorption with a lacy noise mask.
-    const layer = (
-      oc: Node<'vec3'>,
-      tL: Node<'float'>,
-      amount: Node<'float'>,
-      gain: Node<'float'>,
-      colour: Node<'vec3'> | C,
-      absorb: Node<'float'>,
-      lacy: boolean,
-    ) => {
-      const pl = oc.add(rdW.mul(tL));
-      const n = texture3D(tex, pl.mul(u.scale).mul(u.layerNoiseScale).add(vec3(ph.mul(0.012), 0.3, ph.mul(-0.009)))).rg;
-      // Lace: a torn veil, mostly thin dark strands (ridged noise) over a few broader patches.
-      const ridge = float(1).sub(n.x.abs());
-      const mask = lacy
-        ? smoothstep(0.45, 0.9, ridge).mul(0.75).add(smoothstep(0.2, 0.9, n.y).mul(0.45))
-        : float(1).add(n.x.mul(0.3));
-      let emit: Node<'vec3'> = colour.mul(amount.mul(gain).mul(mask));
-      if (o.flicker) emit = mix(emit, hueOf(n.y.mul(0.6).add(u.flickerPhase)).mul(luminance(emit).mul(1.8)), u.flicker);
-      col.addAssign(emit.mul(trans));
-      trans.mulAssign(exp(amount.mul(absorb).mul(mask).negate()));
-    };
-    const veilX = crossing(u.gravityRadius, u.gravityWidth, u.gravityOffset);
-    const shellX = crossing(u.shellRadius, u.shellWidth, vec3(0));
-    const veilOn = o.gravity ? u.gravityStrength : float(0);
-    const shellOn = o.bubble ? u.shellGain : float(0);
-    if (o.gravity) layer(veilX.oc, veilX.tFront, veilX.amount, veilOn, u.gravityGlow, veilOn.mul(u.gravityAbsorb), true);
-    if (o.bubble) layer(shellX.oc, shellX.tFront, shellX.amount, shellOn, mix(u.hot, u.core, 0.5), shellOn.mul(0.25), false);
-
     Loop(steps, () => {
       const pw = ro.add(rdW.mul(t));
       const p = pw.sub(u.centre).div(u.radius); // isotropic local position
@@ -461,6 +415,7 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
       const fd = p.sub(u.focus);
       const focus = exp(dot(fd, fd).div(u.focusRadius.mul(u.focusRadius)).negate()).mul(u.focusGain).add(float(1).sub(u.focusGain));
       const shapeBase = env.mul(focus);
+      const rs = length(p);
 
       // Domain warp from the time-advected fBm texture (two fetches: three warp components + one haze channel).
       const tp = p.mul(u.scale).div(u.stretch).mul(u.warpScale).add(vec3(0.31, 0.17, 0.53));
@@ -531,19 +486,37 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
       const d21 = sqrt(max(f2, 0)).sub(sqrt(max(f1, 0)));
       const skinE = gauss(d21, u.skinWidth).mul(shape).mul(u.skinGain);
       const coreE = gauss(r, u.coreRadius).mul(u.coreGain).mul(float(1).add(w1.x.mul(0.25))).mul(env);
-      // Corona: soft light just outside the bubble, something for the gravity veil to darken as it lifts.
-      const rsph = length(p);
-      const coronaE = o.bubble
-        ? exp(max(rsph.sub(u.shellRadius), 0).div(u.coronaLength).negate())
-            .mul(smoothstep(u.shellRadius.sub(u.shellWidth.mul(2)), u.shellRadius.add(u.shellWidth.mul(2)), rsph))
-            .mul(u.coronaGain)
-            .mul(float(1).add(w2.y.mul(0.3)))
-        : float(0);
+      // The unified field (planck): a luminous, swirling volume with a white-hot core that grades smoothly
+      // into the foam; no surface, no limb. Self-similar wisps come from two rescaled samples of the fBm
+      // texture, twisted about an axis by an angle that grows towards the centre.
+      const fieldE = float(0).toVar();
+      const fieldCol = vec3(0).toVar();
+      const fieldHue = float(0).toVar();
+      if (o.field) {
+        If(u.fieldGain.greaterThan(1e-3), () => {
+          const fr = u.fieldRadius;
+          const ang = u.fieldSwirl.mul(exp(rs.div(fr.mul(1.6)).negate())).add(u.fieldPhase);
+          const k = u.fieldAxis;
+          const ca = cos(ang);
+          const sa = sin(ang);
+          const q = p.mul(ca).add(cross(k, p).mul(sa)).add(k.mul(dot(k, p).mul(float(1).sub(ca))));
+          const n1 = texture3D(tex, q.mul(u.fieldFreq).add(vec3(0.71, 0.23, ph.mul(0.004).add(0.41)))).rg;
+          const n2 = texture3D(tex, q.mul(u.fieldFreq.mul(2.3)).add(vec3(0.13, ph.mul(-0.006).add(0.57), 0.29))).rg;
+          const wisps = smoothstep(-0.8, 1.4, n1.x.mul(0.6).add(n2.x.mul(0.45)).add(n1.y.mul(0.2)));
+          const x2 = rs.div(fr).mul(rs.div(fr));
+          const profile = float(1).div(float(1).add(x2).mul(float(1).add(x2)));
+          const hotCore = gauss(rs, fr.mul(0.38));
+          const fade = float(1).sub(smoothstep(0.72, 0.97, rs));
+          fieldE.assign(hotCore.mul(u.fieldHot).add(profile.mul(float(0.2).add(wisps.mul(0.8)))).mul(u.fieldGain).mul(fade));
+          fieldCol.assign(mix(u.hot, u.core, clamp(hotCore.mul(1.3).add(profile.mul(0.25)), 0, 1)));
+          fieldHue.assign(n1.y.mul(0.7).add(n2.y.mul(0.3)));
+        });
+      }
       // Depth tint: the first films the ray meets are blue-white, those seen through others sink to violet.
       const front = max(trans, 1e-4).pow(u.depthTint);
       const lit = mix(u.far, u.hot, front);
-      const stepE = mix(u.deep, u.hot, 0.35).mul(hazeE).add(lit.mul(skinE)).add(mix(lit, u.core, 0.35).mul(edgeE)).add(u.core.mul(coreE.add(nodeE))).add(u.hot.mul(coronaE)).toVar();
-      const stepSigma = hazeE.mul(0.5).add(skinE.mul(0.6)).add(coreE.mul(0.2)).mul(u.absorb).toVar();
+      const stepE = mix(u.deep, u.hot, 0.35).mul(hazeE).add(lit.mul(skinE)).add(mix(lit, u.core, 0.35).mul(edgeE)).add(u.core.mul(coreE.add(nodeE))).add(fieldCol.mul(fieldE)).toVar();
+      const stepSigma = hazeE.mul(0.5).add(skinE.mul(0.6)).add(coreE.mul(0.2)).add(fieldE.mul(0.04)).mul(u.absorb).toVar();
       if (o.flicker) {
         // Colour charge: each cell carries red, green or blue, cycling as the charge is exchanged.
         const hue = fract(id1.mul(3).add(u.flickerPhase));
@@ -555,12 +528,41 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
         // Strongest on the foam's edges and nodes, faint on the haze and corona.
         const structural = clamp(edgeE.add(nodeE).add(skinE).mul(3), 0, 1);
         stepE.assign(mix(stepE, charge.mul(luminance(stepE).mul(2.2)), u.flicker.mul(mix(float(0.3), float(1), structural))));
+        if (o.field) {
+          // The field's wisps carry colour charge too: swirling red/green/blue patches.
+          const fk = fract(fieldHue.add(u.flickerPhase)).mul(3);
+          const fr2 = clamp(float(1).sub(fk.sub(0.5).abs().mul(1.4)), 0, 1).add(clamp(float(1).sub(fk.sub(3.5).abs().mul(1.4)), 0, 1));
+          const fg2 = clamp(float(1).sub(fk.sub(1.5).abs().mul(1.4)), 0, 1);
+          const fb2 = clamp(float(1).sub(fk.sub(2.5).abs().mul(1.4)), 0, 1);
+          const fc = u.colourR.mul(fr2).add(u.colourG.mul(fg2)).add(u.colourB.mul(fb2));
+          stepE.addAssign(fc.sub(fieldCol).mul(fieldE).mul(u.flicker).mul(0.75));
+        }
+      }
+
+      // Gravity: a darker layer lifting off — a net of thin dark filaments (ridged noise sampled on the
+      // directions of an expanding, off-centre shell, so the pattern travels outward with it).
+      const bandDist = float(1e3).toVar();
+      if (o.gravity) {
+        If(u.gravityStrength.greaterThan(1e-3), () => {
+          const gd = p.sub(u.gravityOffset);
+          const gr = length(gd);
+          const band = gauss(gr.sub(u.gravityRadius), u.gravityWidth).mul(u.gravityStrength).mul(float(1).sub(smoothstep(0.82, 0.97, gr)));
+          const dir = gd.div(max(gr, 1e-4));
+          const nn = texture3D(tex, dir.mul(u.latticeScale).add(vec3(0.37, 0.61, ph.mul(0.003).add(0.17)))).rg;
+          const ridge = float(1).sub(nn.x.abs());
+          const ridge2 = float(1).sub(nn.y.abs());
+          const net = smoothstep(0.78, 0.97, ridge).add(smoothstep(0.86, 0.99, ridge2).mul(0.6));
+          const g = band.mul(clamp(net, 0, 1).mul(0.85).add(0.15));
+          stepSigma.addAssign(g.mul(u.gravityAbsorb));
+          stepE.assign(stepE.mul(float(1).sub(clamp(g, 0, 1).mul(0.8))).add(u.gravityGlow.mul(band).mul(net)));
+          bandDist.assign(max(gr.sub(u.gravityRadius).abs().sub(u.gravityWidth.mul(2)), 0).mul(u.radius).mul(0.8));
+        });
       }
 
       // Never skip an edge; if a ray runs along one, let the minimum step grow a little so it cannot stall
       // (stalled rays would show as dark cracks).
       const minEff = minW.mul(float(1).add(min(nearCount, 8).mul(0.5)));
-      dtW.assign(clamp(select(doFoam, e3, float(10)).mul(0.5 * TRACE_SAFETY).mul(cellW), minEff, maxW));
+      dtW.assign(clamp(min(select(doFoam, e3, float(10)).mul(0.5 * TRACE_SAFETY).mul(cellW), bandDist), minEff, maxW));
       nearCount.assign(select(dtW.lessThanEqual(minEff.mul(1.001)), nearCount.add(1), float(0)));
       const dtL = dtW.div(u.radius); // local path length: brightness independent of world size
       col.addAssign(stepE.mul(trans).mul(dtL));
@@ -570,8 +572,6 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
         Break();
       });
     });
-    if (o.bubble) layer(shellX.oc, shellX.tBack, shellX.amount, shellOn, mix(u.hot, u.core, 0.5), shellOn.mul(0.25), false);
-    if (o.gravity) layer(veilX.oc, veilX.tBack, veilX.amount, veilOn, u.gravityGlow, veilOn.mul(u.gravityAbsorb), true);
     return vec4(col.mul(u.exposure), float(1).sub(trans));
   })();
 

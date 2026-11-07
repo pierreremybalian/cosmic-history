@@ -49,6 +49,26 @@ describe('primordial field', () => {
     expect(num / den).toBeGreaterThan(0.5);
   });
 
+  it('different grid sizes share the same large-scale modes (same universe at every tier)', () => {
+    const a = generateField({ ...DEFAULT_FIELD, n: 16, tzaSmoothMpcH: 0, peakSmoothMpcH: 15 });
+    const b = generateField({ ...DEFAULT_FIELD, n: 32, tzaSmoothMpcH: 0, peakSmoothMpcH: 15 });
+    // Compare the heavily smoothed fields at the 16³ cell centres.
+    let ab = 0;
+    let aa = 0;
+    let bb = 0;
+    for (let z = 0; z < 16; z++)
+      for (let y = 0; y < 16; y++)
+        for (let x = 0; x < 16; x++) {
+          const va = a.deltaSmooth[(z * 16 + y) * 16 + x]!;
+          const vb = b.deltaSmooth[((2 * z) * 32 + 2 * y) * 32 + 2 * x]! * 0.125 +
+            b.deltaSmooth[((2 * z + 1) * 32 + 2 * y + 1) * 32 + 2 * x + 1]! * 0.875;
+          ab += va * vb;
+          aa += va * va;
+          bb += vb * vb;
+        }
+    expect(ab / Math.sqrt(aa * bb)).toBeGreaterThan(0.9);
+  });
+
   it('finds peaks sorted by height', () => {
     expect(f.peaks.length).toBeGreaterThan(4 * 10);
     for (let i = 1; i < f.peaks.length / 4; i++) expect(f.peaks[i * 4 + 3]!).toBeLessThanOrEqual(f.peaks[(i - 1) * 4 + 3]!);

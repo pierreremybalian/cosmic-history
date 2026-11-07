@@ -467,7 +467,7 @@ export function createPlanet(o: PlanetOptions): Planet {
     // ── ice ──
     const lat = abs(P.y);
     const iceNoise = fbm(P.mul(6.0).add(vec3(9.1, 2.2, 4.4)), 3).mul(0.06);
-    const polar = smoothstep(u.iceEdge.sub(0.02), u.iceEdge.add(0.02), lat.add(iceNoise).add(land.mul(0.04)));
+    const polar = smoothstep(u.iceEdge.sub(0.02), u.iceEdge.add(0.02), lat.add(iceNoise).add(land.mul(0.04))).mul(float(1).sub(smoothstep(0.985, 0.999, u.iceEdge)));
     const nhSheet = smoothstep(u.iceEdgeNorthLand.sub(0.012), u.iceEdgeNorthLand.add(0.012), P.y.add(iceNoise.mul(1.2))).mul(land);
     const pIce = smoothstep(0.55, 0.72, min(photo.r, min(photo.g, photo.b))).mul(u.northIce).mul(u.realPlates).mul(land);
     const ant = antarctic.mul(u.photoIce).mul(u.realPlates);
