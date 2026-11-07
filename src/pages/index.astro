@@ -186,6 +186,22 @@ const titles = chapters.map((ch) => ch.data.title);
   const driver = createScrollDriver(document.querySelector<HTMLElement>('[data-story]')!);
   (window as unknown as { __driver?: unknown }).__driver = driver;
 
+  // Past "now" the credits scroll in: fade the narration and HUD out over the first ~half viewport.
+  const story = document.querySelector<HTMLElement>('[data-story]')!;
+  const root = document.documentElement;
+  let endFade = -1;
+  const onScroll = () => {
+    const end = story.offsetTop + story.offsetHeight - window.innerHeight;
+    const f = Math.min(1, Math.max(0, (window.scrollY - end) / (window.innerHeight * 0.45)));
+    if (f === endFade) return;
+    endFade = f;
+    root.style.setProperty('--end-fade', f.toFixed(3));
+    root.classList.toggle('past-end', f >= 1);
+  };
+  driver.lenis.on('scroll', onScroll);
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
   const hero = document.querySelector<HTMLElement>('[data-hero]')!;
   $progress.subscribe((p) => {
     const o = Math.max(0, 1 - p / HERO_END);
@@ -195,6 +211,14 @@ const titles = chapters.map((ch) => ch.data.title);
 </script>
 
 <style>
+  :global(.narration),
+  :global(.hud) {
+    opacity: calc(1 - var(--end-fade, 0));
+  }
+  :global(html.past-end .narration),
+  :global(html.past-end .hud) {
+    visibility: hidden;
+  }
   :global(html.clean .narration),
   :global(html.clean .hud),
   :global(html.clean-1 .hero) {
