@@ -1,16 +1,19 @@
 // Quantum-foam volume shared by `planck` (whole chapter) and `inflation` (its opening patch).
 //
 // The foam is a 4D (space + time) froth: an analytic Voronoi / power diagram whose cells breathe in time,
-// seen through a domain warp driven by time-advected fBm (a small precomputed tileable 3D noise texture,
-// two fetches per step instead of ~10 procedural noise evaluations). The raymarch detects every crossing of a
-// cell wall exactly (the nearest cell changes between samples), so the films stay crisp at any step count:
-// each film adds light boosted where it is seen edge-on (bright rims, like soap films), Plateau borders
-// (where three bubbles meet) flare, and a soft fBm haze fills the space between.
+// seen through a domain warp driven by time-advected fBm (a small precomputed, tileable 3D noise texture:
+// two fetches per step instead of ~10 procedural noise evaluations). What glows is the foam's skeleton:
+// Plateau borders (edges where three bubbles meet, √F3 − √F1 → 0) as thin lines, vertices (four bubbles)
+// as white-hot nodes, plus soft bubble skins and a faint haze. The march sphere-traces towards the edges
+// ((√F3 − √F1)/2 bounds the distance to any edge), so thin lines are never skipped at any step count.
+// Planck's single bubble and gravity veil are thin spherical layers integrated analytically where the ray
+// crosses them (no sampling, so no aliasing).
 //
 // The volume is raymarched at reduced resolution into its own target (see FoamVolume.target) and
-// up-sampled by a full-screen quad drawn first in the scene's main pass.
+// up-sampled by a full-screen quad drawn in the scene's main pass.
 
 import {
+  AdditiveBlending,
   BackSide,
   Color,
   Data3DTexture,
@@ -47,7 +50,6 @@ import {
   positionWorld,
   screenCoordinate,
   select,
-  sin,
   smoothstep,
   sqrt,
   texture,
@@ -211,6 +213,8 @@ export interface FoamUniforms {
   edgeWidth: F;
   /** White-hot vertices where four bubbles meet. */
   nodeGain: F;
+  /** max(edge, node, skin, flicker) gain: the cell search is skipped where the foam structure is invisible. */
+  structure: F;
   hazeGain: F;
   /** Local radius of the foam ball (≤ 1) and the fraction of it used for the soft edge. */
   foamExtent: F;
@@ -223,11 +227,10 @@ export interface FoamUniforms {
   absorb: F;
   /** Envelope squash along world z (> 1 = thinner along the view axis). */
   zSquash: F;
-  /** Single luminous bubble (planck): radius and width in local units, gain, surface wobble. */
+  /** Single luminous bubble (planck): radius and width in local units, and gain. */
   shellRadius: F;
   shellWidth: F;
   shellGain: F;
-  shellWobble: F;
   /** Noise frequency on the analytic layers (relative to the cell frequency). */
   layerNoiseScale: F;
   /** Corona outside the bubble: gain and e-folding length (local units). */
@@ -239,6 +242,8 @@ export interface FoamUniforms {
   depthTint: F;
   /** Longest step as a multiple of chord / steps (> 1 lets sphere tracing skip empty space faster). */
   maxStepMul: F;
+  /** Longest distance marched (world): bounds the cost when the camera is inside a huge volume. */
+  maxChord: F;
   /** Brightness focus: local centre, radius, and how much it dominates (0 = uniform). */
   focus: V3;
   focusRadius: F;
@@ -273,6 +278,8 @@ export interface FoamVolumeOptions {
   flicker?: boolean;
   /** Include the single luminous bubble (planck's unified field). */
   bubble?: boolean;
+  /** Composite the up-sampled volume additively over what is already drawn (inflation) instead of opaquely. */
+  additive?: boolean;
 }
 
 export interface FoamVolume {
@@ -304,6 +311,7 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     edgeGain: uniform(0.5),
     edgeWidth: uniform(0.08),
     nodeGain: uniform(0),
+    structure: uniform(1),
     hazeGain: uniform(0.2),
     foamExtent: uniform(0.9),
     edgeSoft: uniform(0.5),
@@ -315,13 +323,13 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     shellRadius: uniform(0.4),
     shellWidth: uniform(0.02),
     shellGain: uniform(0),
-    shellWobble: uniform(0.02),
     layerNoiseScale: uniform(0.25),
     coronaGain: uniform(0),
     coronaLength: uniform(0.08),
     gravityOffset: uniform(new Vector3()),
     depthTint: uniform(1.5),
     maxStepMul: uniform(2),
+    maxChord: uniform(1e4),
     focus: uniform(new Vector3()),
     focusRadius: uniform(0.6),
     focusGain: uniform(0),
@@ -346,9 +354,15 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
 
   // Seeds of the foam cells: a jittered lattice; each cell "breathes" (power-diagram weight), so bubbles
   // swell and shrink independently while the domain warp makes the whole froth churn.
-  const hash3 = (c: Node<'vec3'>): Node<'vec3'> =>
-    fract(sin(vec3(dot(c, vec3(127.1, 311.7, 74.7)), dot(c, vec3(269.5, 183.3, 246.1)), dot(c, vec3(113.5, 271.9, 124.6)))).mul(43758.5453));
-  const neighbours = { start: 0, end: 27, type: 'int' as const, name: 'nb' };
+  // Arithmetic hash (Hoskins' hash33): no transcendentals, so 27 neighbours per step stay affordable.
+  const hash3 = (c: Node<'vec3'>): Node<'vec3'> => {
+    const p = fract(c.mul(vec3(0.1031, 0.103, 0.0973)));
+    const q = p.add(dot(p, p.yxz.add(33.33)));
+    return fract(q.xxy.add(q.yxx).mul(q.zyx));
+  };
+  const NEIGHBOURS: [number, number, number][] = [];
+  for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) NEIGHBOURS.push([x, y, z]);
+  NEIGHBOURS.sort((a, b) => a[0] ** 2 + a[1] ** 2 + a[2] ** 2 - (b[0] ** 2 + b[1] ** 2 + b[2] ** 2));
   /** exp(−(x/w)²) without pow(): pow of a negative base is undefined in WGSL/GLSL. */
   const gauss = (x: Node<'float'>, w: Node<'float'>): Node<'float'> => {
     const q = x.div(w);
@@ -370,7 +384,7 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
     const c = dot(roE, roE).sub(1);
     const h = sqrt(max(b.mul(b).sub(a.mul(c)), 0));
     const t0 = max(b.negate().sub(h).div(a), 0);
-    const t1 = b.negate().add(h).div(a);
+    const t1 = min(b.negate().add(h).div(a), t0.add(u.maxChord));
     // Sphere tracing towards the Plateau borders: (√F3 − √F1)/2 is a lower bound on the distance to any
     // edge of the foam, so the thin glowing edges are never skipped; the step is capped so the haze stays
     // sampled.
@@ -460,43 +474,49 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
       const f2 = float(1e4).toVar();
       const f3 = float(1e4).toVar();
       const f4 = float(1e4).toVar();
-      const s1 = vec3(0).toVar();
       const id1 = float(0).toVar();
-      Loop(neighbours, (inputs) => {
-        // The loop variable is named 'nb' (not shadowing the outer 'i'); @types/three only knows 'i'.
-        const nf = float((inputs as unknown as { nb: Node<'int'> }).nb);
-        const ox = nf.div(9).floor();
-        const oy = nf.sub(ox.mul(9)).div(3).floor();
-        const oz = nf.sub(ox.mul(9)).sub(oy.mul(3));
-        const cell = base.add(vec3(ox, oy, oz).sub(1));
-        const hc = hash3(cell);
-        const seed = cell.add(0.5).add(hc.sub(0.5).mul(u.seedJitter));
-        const wgt = sin(ph.mul(hc.x.mul(0.7).add(0.35)).add(hc.y.mul(6.283))).mul(u.breathe);
-        const dv = cp.sub(seed);
-        const d = dot(dv, dv).sub(wgt);
-        If(d.lessThan(f1), () => {
-          f4.assign(f3);
-          f3.assign(f2);
-          f2.assign(f1);
-          f1.assign(d);
-          s1.assign(seed);
-          id1.assign(hc.z);
-        })
-          .ElseIf(d.lessThan(f2), () => {
-            f4.assign(f3);
-            f3.assign(f2);
-            f2.assign(d);
-          })
-          .ElseIf(d.lessThan(f3), () => {
-            f4.assign(f3);
-            f3.assign(d);
-          })
-          .ElseIf(d.lessThan(f4), () => {
-            f4.assign(d);
+      // Neighbours nearest-first (centre, faces, edges, corners); a cell is skipped when even the closest
+      // place its seed could be is farther than the current fourth-nearest (most corners and edges are).
+      const halfJ = u.seedJitter.mul(0.5);
+      const doFoam = shapeBase.mul(u.structure).greaterThan(0.02);
+      If(doFoam, () => {
+        for (const [ox, oy, oz] of NEIGHBOURS) {
+          const cell = base.add(vec3(ox, oy, oz));
+          const gap = max(cp.sub(cell.add(0.5)).abs().sub(halfJ), 0);
+          const lower = dot(gap, gap).sub(u.breathe);
+          If(lower.lessThan(f4), () => {
+            const hc = hash3(cell);
+            const seed = cell.add(0.5).add(hc.sub(0.5).mul(u.seedJitter));
+            // Breathing weight: a smooth triangle wave (no sin) with a per-cell rate and phase.
+            const tri = fract(ph.mul(hc.x.mul(0.11).add(0.055)).add(hc.y)).mul(2).sub(1).abs();
+            const wgt = tri.mul(tri).mul(float(3).sub(tri.mul(2))).sub(0.5).mul(u.breathe.mul(2));
+            const dv = cp.sub(seed);
+            const d = dot(dv, dv).sub(wgt);
+            If(d.lessThan(f1), () => {
+              f4.assign(f3);
+              f3.assign(f2);
+              f2.assign(f1);
+              f1.assign(d);
+              id1.assign(hc.z);
+            })
+              .ElseIf(d.lessThan(f2), () => {
+                f4.assign(f3);
+                f3.assign(f2);
+                f2.assign(d);
+              })
+              .ElseIf(d.lessThan(f3), () => {
+                f4.assign(f3);
+                f3.assign(d);
+              })
+              .ElseIf(d.lessThan(f4), () => {
+                f4.assign(d);
+              });
           });
+        }
       });
 
-      const bub = max(float(1).add(w2.y.mul(u.bubbling)), 0);
+      // Log-normal brightness modulation: smooth everywhere (a clamped linear one cut hard edges into the foam).
+      const bub = exp(w2.y.mul(u.bubbling).mul(0.6));
       const shape = shapeBase.mul(bub);
 
       // Soft volumetric haze between the films (atmosphere + depth) and Plateau borders (where three
@@ -510,7 +530,7 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
       // Bubble skins: soft, wide membranes (well sampled at any step count) that give the cells volume.
       const d21 = sqrt(max(f2, 0)).sub(sqrt(max(f1, 0)));
       const skinE = gauss(d21, u.skinWidth).mul(shape).mul(u.skinGain);
-      const coreE = gauss(r, u.coreRadius).mul(u.coreGain).mul(float(1).add(w1.x.mul(0.25)));
+      const coreE = gauss(r, u.coreRadius).mul(u.coreGain).mul(float(1).add(w1.x.mul(0.25))).mul(env);
       // Corona: soft light just outside the bubble, something for the gravity veil to darken as it lifts.
       const rsph = length(p);
       const coronaE = o.bubble
@@ -534,13 +554,13 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
         charge.assign(u.colourR.mul(wr).add(u.colourG.mul(wg)).add(u.colourB.mul(wb)));
         // Strongest on the foam's edges and nodes, faint on the haze and corona.
         const structural = clamp(edgeE.add(nodeE).add(skinE).mul(3), 0, 1);
-        stepE.assign(mix(stepE, charge.mul(luminance(stepE).mul(1.6)), u.flicker.mul(mix(float(0.25), float(1), structural))));
+        stepE.assign(mix(stepE, charge.mul(luminance(stepE).mul(2.2)), u.flicker.mul(mix(float(0.3), float(1), structural))));
       }
 
       // Never skip an edge; if a ray runs along one, let the minimum step grow a little so it cannot stall
       // (stalled rays would show as dark cracks).
       const minEff = minW.mul(float(1).add(min(nearCount, 8).mul(0.5)));
-      dtW.assign(clamp(e3.mul(0.5 * TRACE_SAFETY).mul(cellW), minEff, maxW));
+      dtW.assign(clamp(select(doFoam, e3, float(10)).mul(0.5 * TRACE_SAFETY).mul(cellW), minEff, maxW));
       nearCount.assign(select(dtW.lessThanEqual(minEff.mul(1.001)), nearCount.add(1), float(0)));
       const dtL = dtW.div(u.radius); // local path length: brightness independent of world size
       col.addAssign(stepE.mul(trans).mul(dtL));
@@ -561,7 +581,9 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
   mesh.frustumCulled = false;
 
   const target = new RenderTarget(1, 1, { type: HalfFloatType, depthBuffer: false, minFilter: LinearFilter, magFilter: LinearFilter });
-  const qmat = new MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+  const qmat = new MeshBasicNodeMaterial(
+    o.additive ? { depthTest: false, depthWrite: false, transparent: true, blending: AdditiveBlending } : { depthTest: false, depthWrite: false },
+  );
   qmat.vertexNode = vec4(positionGeometry.xy, 0, 1);
   qmat.colorNode = texture(target.texture, uv()).rgb;
   const quad = new Mesh(new PlaneGeometry(2, 2), qmat);
@@ -585,6 +607,9 @@ export function createFoamVolume(o: FoamVolumeOptions): FoamVolume {
       mat.dispose();
       quad.geometry.dispose();
       qmat.dispose();
+      // The target's texture may have been sampled (by the quad) without the target ever being rendered to,
+      // in which case disposing the target alone would not free it.
+      target.texture.dispose();
       target.dispose();
     },
   };
@@ -639,6 +664,7 @@ export function applyLook(u: FoamUniforms, look: FoamLook, centre: Vector3): voi
   u.edgeGain.value = look.edge;
   u.edgeWidth.value = look.edgeWidth;
   u.nodeGain.value = look.node;
+  u.structure.value = Math.max(look.edge, look.node, look.skin, u.flicker.value) * look.exposure;
   u.hazeGain.value = look.haze;
   u.bubbling.value = look.bubbling;
   u.edgeSoft.value = look.edgeSoft;
@@ -651,12 +677,22 @@ export function applyLook(u: FoamUniforms, look: FoamLook, centre: Vector3): voi
 }
 
 /**
+ * Narrow (portrait) views pull the camera back so the field keeps the same share of the width; both scenes
+ * use this so the hand-off still matches.
+ */
+export function aspectPullback(aspect: number): number {
+  return Math.max(1, FOAM_HANDOFF.refAspect / Math.max(aspect, 1e-3));
+}
+
+/**
  * Planck's final frame is inflation's first: a calm, centred, bright foam patch seen by the same camera.
  * Both scenes read these so the 'stretch' transition hands one over to the other seamlessly.
  */
 export const FOAM_HANDOFF = {
   cameraDistance: 6.6,
   fov: 35,
+  /** Below this aspect ratio the camera pulls back (see aspectPullback). */
+  refAspect: 1.3,
   look: {
     radius: 1.3,
     bound: 1.4,

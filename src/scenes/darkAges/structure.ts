@@ -81,6 +81,19 @@ export const STRUCTURE = {
   deltaCollapse: 1.686,
 } as const;
 
+/** Piecewise-linear lookup in [x, y] keys (scene brightness ramps keyed on local). */
+export function ramp(keys: readonly (readonly [number, number])[], x: number): number {
+  if (x <= keys[0]![0]) return keys[0]![1];
+  for (let i = 1; i < keys.length; i++) {
+    const [b, vb] = keys[i]!;
+    if (x <= b) {
+      const [a, va] = keys[i - 1]!;
+      return va + ((vb - va) * (x - a)) / (b - a);
+    }
+  }
+  return keys[keys.length - 1]![1];
+}
+
 /** Chapter ordinals used for u. */
 export const ORDINAL = { darkAges: 0, firstStars: 1, reionization: 2 } as const;
 

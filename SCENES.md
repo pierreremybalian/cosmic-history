@@ -44,6 +44,9 @@ Declare `accuracy` (`measured | simulated | modelled | metaphor`), a one-sentenc
 - Rendering into the scene target is linear, untonemapped (`renderer.isOutputTarget` is false). Keep backgrounds truly black; emissive highlights 1–8.
 - `MeshBasicNodeMaterial`, `SpriteNodeMaterial`, `PointsNodeMaterial`, `MeshStandardNodeMaterial` from `three/webgpu`. Additive blending + `depthWrite: false` for glows.
 - Fullscreen effects inside a scene: a `Mesh(new PlaneGeometry(2, 2), material)` with an `OrthographicCamera(-1,1,1,-1,0,1)` in a second `Scene`, or a large sphere `BackSide` for sky/volume.
+- `pow(x, y)` with negative `x` is undefined in WGSL/GLSL (NaN → black blocks through bloom). Use `x.mul(x)` or `abs` first.
+- `RenderTarget.dispose()` does not free a target's texture if it was only sampled, never rendered to; also call `target.texture.dispose()` for internal targets.
+- A scene spanning two chapters (recombination, life): `local` restarts at the boundary; drive visuals from `g`. The harness takes `--chapter <id>` to shoot the second chapter.
 - Raymarching: ray origin `cameraPosition`, direction `positionWorld.sub(cameraPosition).normalize()` on a bounding box/sphere mesh with `side: BackSide`.
 
 ## Visual direction

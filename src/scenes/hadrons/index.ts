@@ -25,6 +25,9 @@ import {
   createViewRig,
   currents,
   devTune,
+  findSlot,
+  pinHero,
+  randCPU,
   EVENT_PARTS,
   eventLayer,
   glitterLayer,
@@ -53,18 +56,18 @@ export const params = {
   box: 12,
   boxAhead: 0.3,
   fov: 50,
-  focus: 2.4,
-  aperture: 0.008,
-  maxBlur: 0.04,
+  focus: 1.9,
+  aperture: 0.02,
+  maxBlur: 0.06,
   minPx: 1.1,
   near: 0.6,
   fog: 3.8,
   share: { quarks: 0.14, glitter: 0.5, silk: 0.24, events: 0.03 },
   bathSteps: { low: 8, medium: 14, high: 18 } as Record<string, number>,
   bathLength: 11,
-  bathIntensity: 0.2,
+  bathIntensity: 0.12,
   bathFloor: 0.02,
-  currents: { scale: 0.35, sharp: 3, voids: 0.95, floor: 0.2 },
+  currents: { scale: 0.5, sharp: 4, voids: 0.95, floor: 0.12 },
   morphRate: 0.03,
   /** Everything here is massive except photons: the massive clock runs at this fraction of c. */
   massiveBeta: 0.16,
@@ -72,7 +75,7 @@ export const params = {
   quarkTrailWall: 0.06,
   silk: { beads: 160, length: 4, width: 0.006, intensity: 1.0, afterAnnihilation: 0.9 },
   glitter: { width: 0.004, intensity: 1.0, drift: 0.5 },
-  events: { period: 2.6, peak: 0.55, approach: 0.22, flight: 0.9, mesonEra: 0.25 },
+  events: { period: 2.6, peak: 0.55, approach: 0.15, flight: 0.9, mesonEra: 0.25 },
   beats: {
     /** Confinement (QCD crossover) time, s. */
     confineT: 1e-5,
@@ -83,6 +86,12 @@ export const params = {
     goldFade: 0.12,
     calm: 0.86,
   },
+  /** Foreground slots pinned near the camera (offset in the camera frame). */
+  heroes: [
+    { offset: [0.22, -0.04, -1.7] as const },
+    { offset: [-0.55, 0.16, -2.0] as const },
+    { offset: [0.62, 0.32, -2.4] as const },
+  ],
   camera: { travel: 4.5, drift: 0.12, sway: 0.25 },
   shape: {
     c: 0.6,
@@ -96,8 +105,8 @@ export const params = {
     confineAt: 0.17,
     confineSpread: 0.05,
     confineDur: 0.03,
-    baryonRadius: 0.026,
-    mesonRadius: 0.02,
+    baryonRadius: 0.045,
+    mesonRadius: 0.035,
     hadronSpin: 1.8,
     mesonDecayStart: 0.27,
     mesonDecayEnd: 0.46,
@@ -106,15 +115,15 @@ export const params = {
     annApproach: 0.07,
     quarkWidth: 0.018,
     quarkIntensity: 2.6,
-    stringWidth: 0.004,
-    stringIntensity: 2.4,
-    bagWidth: 0.07,
-    bagIntensity: 0.45,
-    survivorWidth: 0.11,
-    flashWidth: 0.35,
-    flashIntensity: 6,
+    stringWidth: 0.005,
+    stringIntensity: 3,
+    bagWidth: 0.05,
+    bagIntensity: 0.3,
+    survivorWidth: 0.13,
+    flashWidth: 0.1,
+    flashIntensity: 5,
     gold: [1.0, 0.68, 0.26],
-    neutronTint: [0.85, 0.8, 0.7],
+    neutronTint: [0.62, 0.69, 0.8],
     matterTint: [1.0, 0.9, 0.78],
     antiTint: [0.72, 0.84, 1.0],
     colourCharge: [
@@ -144,6 +153,7 @@ export default (): CosmicScene => {
   const target = new Vector3();
   const uSilk = uniform(1);
   const uEventRate = uniform(0);
+  const base = new Vector3();
 
   const self: CosmicScene = {
     id: 'hadrons',
@@ -169,6 +179,18 @@ export default (): CosmicScene => {
       view.near.value = params.near;
       view.fog.value = params.fog;
       u = createHadronUniforms();
+      // Hero slots via the CPU twin of the GPU seeds: a pair slot that confines and annihilates right on the
+      // beats, a survivor (excess-matter) slot, and a meson slot.
+      {
+        const s = params.shape;
+        const g = (k: number) => randCPU(k, 42) + randCPU(k, 43) + randCPU(k, 44) - 1.5;
+        const onBeat = (k: number) => Math.abs(randCPU(k, 41) - 0.5) < 0.08;
+        const extra = (k: number) => randCPU(k, 0) < s.extraFrac;
+        const meson = (k: number) => !extra(k) && randCPU(k, 40) < s.mesonShare;
+        u.heroes[0]!.id.value = findSlot((k) => !extra(k) && !meson(k) && onBeat(k) && Math.abs(g(k)) < 0.02, 11);
+        u.heroes[1]!.id.value = findSlot((k) => extra(k) && onBeat(k), 11);
+        u.heroes[2]!.id.value = findSlot((k) => meson(k) && onBeat(k) && randCPU(k, 45) > 0.2 && randCPU(k, 45) < 0.3, 11);
+      }
       u.curScale.value = params.currents.scale;
       u.curSharp.value = params.currents.sharp;
       u.curVoids.value = params.currents.voids;
@@ -230,7 +252,7 @@ export default (): CosmicScene => {
             approach: params.events.approach,
             flight: params.events.flight,
             particleWidth: s.quarkWidth * 2.2,
-            flashWidth: s.flashWidth * 0.8,
+            flashWidth: 0.06,
             photonWidth: 0.006,
             matter: vec3(s.matterTint[0], s.matterTint[1], s.matterTint[2]).mul(1.6 * gain),
             antimatter: vec3(s.antiTint[0], s.antiTint[1], s.antiTint[2]).mul(1.6 * gain),
@@ -287,6 +309,8 @@ export default (): CosmicScene => {
       camera.lookAt(target);
       camera.rotateZ(0.035 * Math.sin(tC * 0.015 + local));
       camera.updateMatrixWorld();
+      base.set(0, 0, z);
+      params.heroes.forEach((h, k) => pinHero(u.heroes[k]!, camera, base, h.offset, tC, k * 1.7 + 0.4, 1));
       updateViewRig(view, camera, height, params.boxAhead);
       bath.mesh.position.copy(camera.position);
       void elapsed;

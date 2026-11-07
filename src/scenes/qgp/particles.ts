@@ -64,12 +64,12 @@ export type F = Node<'float'>;
 export type V3 = Node<'vec3'>;
 export type U = Node<'uint'>;
 
-const mkF = () => uniform(0);
-const mkV3 = () => uniform(new Vector3());
-const mkC = () => uniform(new Color());
-export type FloatU = ReturnType<typeof mkF>;
-export type Vec3U = ReturnType<typeof mkV3>;
-export type ColorU = ReturnType<typeof mkC>;
+const _mkF = () => uniform(0);
+const _mkV3 = () => uniform(new Vector3());
+const _mkC = () => uniform(new Color());
+export type FloatU = ReturnType<typeof _mkF>;
+export type Vec3U = ReturnType<typeof _mkV3>;
+export type ColorU = ReturnType<typeof _mkC>;
 
 // ── Seeds ───────────────────────────────────────────────────────────────────
 
@@ -166,7 +166,33 @@ export function slotExtra(slot: U, extraFrac: number): F {
   return smoothstep(0, 1e-4, float(extraFrac).sub(rand(slot, 0)));
 }
 
+/**
+ * A hero is an ordinary slot (picked on the CPU for its type and timing, see randCPU) whose anchor is pinned
+ * near the camera's path, so a beat plays out legibly in the foreground. vis fades it in and out.
+ */
+export interface Hero {
+  id: FloatU;
+  ref: Vec3U;
+  tan: Vec3U;
+  vis: FloatU;
+}
+
+export function createHeroes(n: number): Hero[] {
+  return Array.from({ length: n }, () => ({
+    id: uniform(-10),
+    ref: uniform(new Vector3()),
+    tan: uniform(new Vector3(1, 0, 0)),
+    vis: uniform(0),
+  }));
+}
+
+/** 1 for the hero with this slot id (ids are integers stored as floats). */
+export function heroMatch(slot: U, h: Hero): F {
+  return float(1).sub(smoothstep(0.25, 0.5, abs(slot.toFloat().sub(h.id))));
+}
+
 export interface SlotStrand {
+  heroes?: Hero[];
   box: F;
   flow: StrandFlow;
   /** Visual speed of light (world units per clock second) along the strand. */
@@ -184,14 +210,42 @@ export function slotOrigin(slot: U, box: F): V3 {
  * A slot rides its own streamline: arc0 is the arc fraction of member 0 at clock τ (members follow at
  * `spacing`), fade hides the wrap from the strand's end back to its start.
  */
-export function slotStrand(slot: U, tau: F, o: SlotStrand): { x0: V3; arc0: F; fade: F; du: number; speed: F } {
+export interface SlotOnStrand {
+  x0: V3;
+  arc0: F;
+  fade: F;
+  du: number;
+  /** World speed along the strand. */
+  speed: F;
+  /** Strand point at the slot's middle and the flow tangent there: members sit along this tangent. */
+  ref: V3;
+  tan: V3;
+  spacing: number;
+}
+
+export function slotStrand(slot: U, tau: F, o: SlotStrand): SlotOnStrand {
   const x0 = slotOrigin(slot, o.box);
   const speed = rand(slot, 6).mul(0.5).add(0.75).mul(o.c / o.flow.length);
   const du = o.spacing / o.flow.length;
   const u = fract(rand(slot, 7).add(tau.mul(speed)));
   const arc0 = u.mul(1 - SLOT * du);
   const fade = sin(u.mul(Math.PI)).pow(0.6);
-  return { x0, arc0, fade, du, speed: speed.mul(o.flow.length) };
+  // One streamline integration per slot; a slot spans ~0.5 world units, so its members follow the tangent.
+  let ref: V3 = strandPoint(x0, arc0.add(du * (SLOT - 1) * 0.5), o.flow);
+  let tan: V3 = flowDir(ref, o.flow);
+  let fd: F = fade;
+  for (const h of o.heroes ?? []) {
+    const m = heroMatch(slot, h);
+    ref = mix(ref, h.ref, m);
+    tan = normalize(mix(tan, h.tan, m));
+    fd = mix(fd, h.vis, m);
+  }
+  return { x0, arc0, fade: fd, du, speed: speed.mul(o.flow.length), ref, tan, spacing: o.spacing };
+}
+
+/** World point at `arcM` member spacings from the slot's first member (unwrapped). */
+export function slotAt(st: SlotOnStrand, arcM: F): V3 {
+  return st.ref.add(st.tan.mul(arcM.sub((SLOT - 1) * 0.5).mul(st.spacing)));
 }
 
 /** Point on a tight ring of radius r around a centre, for member phase φ0 + k·2π/n at clock τ. */
@@ -485,6 +539,16 @@ export function strandPoint(x0: V3, s: F, f: StrandFlow): V3 {
 
 // ── Generic layers shared by hadrons and leptons ───────────────────────────
 
+/**
+ * Brightness of a silk bead from its arc offset: a few bright packets per strand that travel with the beads,
+ * so streams read as pulses of light rather than static scratches.
+ */
+export function lightPackets(arcOffset: F, strand: U, jitter: F): F {
+  const ph = arcOffset.mul(Math.PI * 2 * 3).add(rand(strand, 12).mul(6.28));
+  const packet = smoothstep(0.1, 1, sin(ph)).pow(2);
+  return packet.mul(0.8).add(0.2).mul(jitter.mul(0.4).add(0.6));
+}
+
 export interface SilkOptions {
   view: ViewRig;
   flow: StrandFlow;
@@ -515,7 +579,7 @@ export function silkLayer(o: SilkOptions): StreakSpec {
   const head = wrapBox(headU, o.view.centre, box);
   const tail = head.sub(headU.sub(tailU));
   const ends = sin(arc.mul(Math.PI)).sqrt();
-  const tone = rand(i, 8).mul(0.7).add(0.3);
+  const tone = lightPackets(rand(i, 7), strand, rand(i, 8));
   let k: F = ends.mul(tone).mul(boxFade(head, o.view.centre, box));
   if (o.reveal) k = k.mul(below(rand(strand, 9), o.reveal));
   if (o.shade) k = k.mul(o.shade(head, strand));
@@ -623,4 +687,38 @@ export function eventLayer(o: EventOptions): StreakSpec {
     .add(o.photon.mul(isG.mul(photonK)));
   const width = float(o.particleWidth).mul(isA.add(isB)).add(float(o.flashWidth).mul(isF).mul(out.mul(1.5).add(0.6))).add(float(o.photonWidth).mul(isG));
   return { head, tail, width, color: col.mul(active).mul(boxFade(head, o.view.centre, box)), tailGlow: 0.0 };
+}
+
+// ── CPU replica of the GPU seeds (pick hero slots with the right type and timing) ──
+
+/** three's TSL hash (PCG, as in three/src/nodes/math/Hash.js) on the CPU. */
+export function hashCPU(x: number): number {
+  const state = (Math.imul(x >>> 0, 747796405) + 2891336453) >>> 0;
+  const word = Math.imul(((state >>> (((state >>> 28) + 4) >>> 0)) ^ state) >>> 0, 277803737) >>> 0;
+  const result = ((word >>> 22) ^ word) >>> 0;
+  return Math.fround(result) * (1 / 2 ** 32);
+}
+
+/** CPU twin of rand(id, k). */
+export function randCPU(id: number, k: number): number {
+  return hashCPU((Math.imul(id, STRIDE) + k) >>> 0);
+}
+
+/** First slot id ≥ start that satisfies pred. */
+export function findSlot(pred: (slot: number) => boolean, start = 0, limit = 200000): number {
+  for (let s = start; s < limit; s++) if (pred(s)) return s;
+  return start;
+}
+
+const _off = new Vector3();
+/**
+ * Pin a hero slot in front of the camera: anchor = camera base position (no idle sway, so sway reads as
+ * parallax) + offset in the camera's frame + a slow bob; tangent turns slowly so the members re-arrange.
+ */
+export function pinHero(h: Hero, camera: PerspectiveCamera, base: Vector3, offset: readonly [number, number, number], t: number, phase: number, vis: number): void {
+  _off.set(offset[0] + 0.04 * Math.sin(t * 0.31 + phase), offset[1] + 0.03 * Math.sin(t * 0.27 + phase * 2), offset[2]);
+  _off.applyQuaternion(camera.quaternion);
+  h.ref.value.copy(base).add(_off);
+  h.tan.value.set(Math.cos(t * 0.07 + phase), 0.9 * Math.sin(t * 0.05 + phase * 1.7) + 0.5, Math.sin(t * 0.07 + phase)).normalize();
+  h.vis.value = vis;
 }

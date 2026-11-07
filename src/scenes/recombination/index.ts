@@ -4,12 +4,14 @@
 // restarts at the boundary, so everything here is driven by the globals g (t, z, T) and the ionisation
 // history: x_e(z) sets the fog's density, the Thomson transparency e^(−τ(z)) sets how much of the
 // last-scattering shell shows through it. Beats (see photon.mdx / recombination.mdx):
-//   photon 0.00–0.60  blue-white, opaque glowing fog of nuclei, electrons and light, cooling (blackbody LUT)
-//   photon 0.55–1.00  acoustic shells ring through the fog (beat 0.72)
-//   photon 0.93       matter–radiation equality (~50 kyr): dark-matter wells start to deepen (cool patches)
+//   photon 0.00–0.60  white-hot → blue-white opaque glow of nuclei, electrons and light (blackbody LUT of T);
+//                     photons random-walk in short zig-zags (beat 0.32), specks of matter drift past
+//   photon 0.45–1.00  acoustic shells expand through the fog and sweep the specks into fronts (beat 0.72)
+//   photon 0.93       matter–radiation equality (~50 kyr): dark-matter wells deepen as cooler patches
 //   rec    0.00–0.40  orange fog (≈3,600 K); Planck's pattern rises in the fog, blurred; Hα glints as atoms form
-//   rec    0.60–0.90  fog thins (x_e), the last-scattering shell shows through (transparency), pattern sharpens
-//   rec    0.80–1.00  colour map fades in, camera pulls back out of the shell; ends on the full CMB sphere
+//   rec    0.45–0.85  fog thins (x_e), the last-scattering shell shows through (e^(−τ)), the pattern sharpens
+//   rec    0.80–0.93  the colour map is laid down by a Planck-style ecliptic sweep (HUD colour bar from 0.8)
+//   rec    0.68–1.00  the camera pulls back out of the shell (exits ≈ 0.86); ends calm on the full CMB sphere
 
 import {
   InstancedBufferAttribute,
@@ -39,11 +41,14 @@ import { loadCmb, type CmbMap } from './assets.ts';
 import {
   createGlintMaterial,
   createGlintUniforms,
+  createMoteMaterial,
+  createMoteUniforms,
   createPhotonMaterial,
   createPhotonUniforms,
   createSkyMaterial,
   createSkyUniforms,
   type GlintUniforms,
+  type MoteUniforms,
   type PhotonUniforms,
   type SkyUniforms,
 } from './shaders.ts';
@@ -64,26 +69,26 @@ export const params = {
   /** Raymarch steps = quality.raymarchSteps × this, clamped. */
   stepsScale: 0.75,
   stepsMin: 24,
-  stepsMax: 64,
+  stepsMax: 48,
   /** Transparency e^(−τ) → wall visibility: smoothstep(clear0, clear1, e^(−τ)). Completes by z ≈ 1100. */
   clear0: 0.004,
   clear1: 0.3,
   /** Glow brightness: intensity = intensityEnd · (T / tEndK)^intensityPower (∝ T⁴ in reality; compressed). */
   intensityEnd: 0.5,
-  intensityPower: 0.12,
-  /** Fluctuation look (exaggerated, see note). */
-  contrast: 1.5,
-  saturate: 0.9,
+  intensityPower: 0.09,
+  /** Fluctuation look (exaggerated, see note). Contrast: strong while the structure is fine (early), gentler as it grows and as the map takes over. */
+  contrast: [2.6, 1.8] as const,
+  saturate: 1.4,
   tempVar: 0.045,
   densVarBase: 0.35,
   densVarThin: 0.95,
   /** Primordial field box size, world units: grows over the photon era (structures grow). */
-  boxEarly: 16,
+  boxEarly: 3.5,
+  boxLate: 26,
   /** Fine directional mottle (granular plasma look), replaced by the Planck pattern as it rises. */
-  mottleAmp: 0.45,
+  mottleAmp: 0.5,
   mottleFreqEarly: 22,
   mottleFreqLate: 10,
-  boxLate: 34,
   driftSpeed: [0.0021, 0.0013, -0.0017] as const,
   /** Planck pattern in the fog: weight ramps between these times (kyr); blur in the fog (radians). */
   cmbFromKyr: 55,
@@ -92,16 +97,18 @@ export const params = {
   /** Smallest angular blur (radians): keeps the final sphere free of sub-pixel speckle. */
   blurMin: 0.004,
   /** Acoustic shells. */
-  shellCount: { low: 10, medium: 16, high: 24 },
-  shellSpread: 9,
+  shellCount: { low: 5, medium: 8, high: 10 },
+  shellSpread: 4.5,
+  /** Acoustic sources cluster this far ahead of the camera. */
+  shellAhead: 5,
   waveRate: 0.09,
   waveRadius: 7,
-  waveWidth: 0.07,
-  waveGain: 7,
+  waveWidth: 0.06,
+  waveGain: 14,
   /** Dark-matter wells: Ω_m range over which they deepen (equality at 0.5), amplitude. */
   dmOmega: [0.44, 0.68] as const,
-  dmAmp: 0.85,
-  dmScale: 0.55,
+  dmAmp: 1.6,
+  dmScale: 0.35,
   /** Camera. */
   fovFog: 62,
   fovEnd: 48,
@@ -111,7 +118,7 @@ export const params = {
   pullStart: 0.68,
   pullEnd: 1.0,
   pullExp: 1.6,
-  endDistance: 3.25, // × radius
+  endDistance: 3.0, // × radius
   endElevation: 0.06, // rad
   orbitSpeed: 0.018, // rad/s once calm
   /** Reveal (recombination-chapter progress from t). */
@@ -120,7 +127,9 @@ export const params = {
   /** The sweep starts this far (degrees of ecliptic longitude) before the Galactic Centre, the first view. */
   sweepLead: 150,
   scanGain: 0.35,
-  cmbGain: 1.15,
+  cmbGain: 0.62,
+  /** The fog sees the pattern blurred (less variance), so it gets more gain; matches the wall's look as it clears. */
+  cmbFogGain: 1.7,
   mapGain: 0.52,
   redshiftDex: 0.1,
   rimFrom: 0.88,
@@ -129,6 +138,12 @@ export const params = {
   glintCount: { low: 1200, medium: 2500, high: 5000 },
   glintShell: [1.2, 16] as const,
   glintSize: 0.06,
+  /** Plasma motes (nuclei and electrons as faint specks): count, ball radius, size, brightness, inflow speed. */
+  moteCount: { low: 15000, medium: 40000, high: 70000 },
+  moteRadius: 5,
+  moteSize: 0.022,
+  moteGain: 2.2,
+  moteFlow: 0.12,
   /** Photon random walk: count, shell, speed (world units/s), step = mean free path × this. */
   photonCount: { low: 160, medium: 240, high: 360 },
   photonTrail: 2,
@@ -137,11 +152,11 @@ export const params = {
   photonStep: 0.5,
   photonStepFree: 1.4,
   photonWidth: 0.035,
-  photonGain: 7,
+  photonGain: 5,
 };
 
 const FOG_NOTE =
-  'Fog colour, cooling and clearing follow the computed temperature, free-electron fraction and optical depth; its structure, sound waves and brightness are illustrative, with fluctuations shown about 10,000× stronger than the real few parts in 100,000.';
+  'Fog colour, cooling and clearing follow the computed temperature, free-electron fraction and Thomson optical depth; its structure, sound waves, particles and brightness are illustrative, and its fluctuations are hugely exaggerated (the real ones are a few parts in 100,000).';
 const MAP_NOTE =
   'The sphere is the Planck 2018 SMICA map (ESA and the Planck Collaboration), colour mapped ±300 µK; the fog before it is a visual model driven by the computed temperature and free-electron fraction.';
 const STANDIN_NOTE =
@@ -209,6 +224,11 @@ export default (): CosmicScene => {
   const su: SkyUniforms = createSkyUniforms();
   const gu: GlintUniforms = createGlintUniforms();
   const pu: PhotonUniforms = createPhotonUniforms();
+  const mu: MoteUniforms = createMoteUniforms();
+  let motes: Sprite;
+  let moteMat: SpriteNodeMaterial;
+  let moteClock = 0;
+  let flow = 0;
   let photonClock = 0;
   const rgb: [number, number, number] = [0, 0, 0];
   let waveClock = 0;
@@ -263,6 +283,18 @@ export default (): CosmicScene => {
       glints.renderOrder = 1;
       scene.add(glints);
 
+      const nM = params.moteCount[ctx.quality.name];
+      moteMat = createMoteMaterial(mu, shellSeeds(nM, [0, params.moteRadius], 1201), {
+        shellCount: params.shellCount[ctx.quality.name],
+        shellSpread: params.shellSpread,
+        radius: params.moteRadius,
+      });
+      motes = new Sprite(moteMat);
+      motes.count = nM;
+      motes.frustumCulled = false;
+      motes.renderOrder = 1;
+      scene.add(motes);
+
       const nP = params.photonCount[ctx.quality.name];
       const M = params.photonTrail;
       const homes = shellSeeds(nP, params.photonShell, 1090).array as Float32Array;
@@ -309,8 +341,8 @@ export default (): CosmicScene => {
       su.marchMax.value = Math.min(2 * R, P.marchMfp / Math.max(sigma, 1e-6));
       su.densVar.value = lerp(P.densVarBase, P.densVarThin, thin);
 
-      // Colour and brightness from T (blackbody LUT); the reveal redshifts the physical glow away.
-      // Colour map laid down by a Planck-style sweep over [mapFrom, mapTo].
+      // Colour map laid down by a Planck-style sweep over [mapFrom, mapTo]; meanwhile the physical glow (blackbody
+      // LUT of T) reddens and dims slightly, as the freed light starts its long redshift toward microwaves.
       const sweepP = clamp01((uRec - P.mapFrom) / (P.mapTo - P.mapFrom));
       const mapMix = uRec >= P.mapFrom ? 1 : 0;
       su.sweep.value = sweepP * Math.PI * 2;
@@ -321,8 +353,9 @@ export default (): CosmicScene => {
       su.physGain.value = 1 - 0.25 * redshift;
       su.mapMix.value = mapMix;
       su.cmbGain.value = P.cmbGain;
+      su.cmbFogGain.value = P.cmbFogGain;
       su.mapGain.value = P.mapGain;
-      su.contrast.value = P.contrast;
+      su.contrast.value = lerp(P.contrast[0], P.contrast[1], smoothstep(0.05, 0.6, sPh));
       su.tempVar.value = P.tempVar;
       su.saturate.value = P.saturate;
 
@@ -375,6 +408,20 @@ export default (): CosmicScene => {
       pu.colour.value.set(pcol[0] * pI, pcol[1] * pI, pcol[2] * pI);
       pu.amount.value = 1;
 
+      // Motes: blackbody colour, fade as the fog clears (atoms are neutral) and stream slowly past.
+      moteClock += dt;
+      flow += dt * P.moteFlow * (1 - clear);
+      mu.clock.value = moteClock;
+      mu.flow.value = flow;
+      mu.sigma.value = sigma;
+      mu.size.value = P.moteSize;
+      mu.waveClock.value = waveClock;
+      mu.waveAmp.value = clamp01(su.waveAmp.value / P.waveGain) * 1.0;
+      mu.waveR.value = su.waveR.value;
+      mu.waveW.value = su.waveW.value * 4;
+      const mI = su.intensity.value * P.moteGain * (1 - smoothstep(0.45, 0.8, uRec));
+      mu.colour.value.set(rgb[0] * mI, rgb[1] * mI, rgb[2] * mI);
+
       // Camera: at the centre of the shell while the fog lasts, slowly turning; then a pull-back out of it.
       const sceneP = 0.5 * sPh + 0.5 * uRec;
       const calmFog = 1 - smoothstep(0.55, 0.72, uRec);
@@ -401,14 +448,16 @@ export default (): CosmicScene => {
       const fy = Math.sin(pitch - elev);
       const fz = -Math.cos(yaw + orbit) * Math.cos(pitch - elev);
       camera.lookAt(px + fx, py + fy, pz + fz);
+      su.shellOrigin.value.set(px + fx * P.shellAhead, py + fy * P.shellAhead, pz + fz * P.shellAhead);
+      mu.shellOrigin.value.copy(su.shellOrigin.value);
       const fov = lerp(P.fovFog, P.fovEnd, pullCurve);
       if (Math.abs(camera.fov - fov) > 1e-4) {
         camera.fov = fov;
         camera.updateProjectionMatrix();
       }
 
-      // Colour map shown → label it and credit Planck (§13.4, §13.5).
-      const mapped = sweepP > 0.3;
+      // Colour map shown (from the first sweep frame) → label it and credit Planck (§13.4, §13.5).
+      const mapped = sweepP > 0;
       if (mapped !== self.colourMapped) {
         self.colourMapped = mapped;
         self.accuracyNote = mapped ? (cmb?.real === false ? STANDIN_NOTE : MAP_NOTE) : FOG_NOTE;
@@ -431,6 +480,7 @@ export default (): CosmicScene => {
       glintMat?.dispose();
       photons?.geometry.dispose();
       photonMat?.dispose();
+      moteMat?.dispose();
       cmb?.release();
       cmb = null;
     },

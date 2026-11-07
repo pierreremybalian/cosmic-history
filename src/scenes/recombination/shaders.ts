@@ -50,6 +50,7 @@ import {
   pow,
   round,
   screenCoordinate,
+  sin,
   smoothstep,
   sqrt,
   step,
@@ -70,10 +71,10 @@ import type { CmbConvention } from './assets.ts';
 type F = Node<'float'>;
 type V3 = Node<'vec3'>;
 
-const mkF = () => uniform(0);
-const mkV3 = () => uniform(new Vector3());
-type FU = ReturnType<typeof mkF>;
-type V3U = ReturnType<typeof mkV3>;
+const _mkF = () => uniform(0);
+const _mkV3 = () => uniform(new Vector3());
+type FU = ReturnType<typeof _mkF>;
+type V3U = ReturnType<typeof _mkV3>;
 
 /** Everything the CPU drives each frame. Values come from src/physics via index.ts (§13.2). */
 export interface SkyUniforms {
@@ -113,12 +114,15 @@ export interface SkyUniforms {
   waveAmp: FU;
   waveR: FU;
   waveW: FU;
+  /** Where the acoustic sources cluster (ahead of the camera). */
+  shellOrigin: V3U;
   /** Dark-matter wells (Sachs–Wolfe cooling) amount. */
   dm: FU;
   /** 0 = physical blackbody glow, 1 = colour-mapped ΔT (Planck). */
   mapMix: FU;
-  /** ΔT (±300 µK units) → fluctuation units for the physical glow. */
+  /** ΔT (±300 µK units) → fluctuation units for the physical glow on the sharp wall, and in the blurred fog. */
   cmbGain: FU;
+  cmbFogGain: FU;
   /** Planck-style sweep: ecliptic x/y axes in world space, start longitude and swept angle (radians). */
   eclX: V3U;
   eclY: V3U;
@@ -156,9 +160,11 @@ export function createSkyUniforms(): SkyUniforms {
     waveAmp: uniform(0),
     waveR: uniform(10),
     waveW: uniform(0.6),
+    shellOrigin: uniform(new Vector3(0, 0, -5)),
     dm: uniform(0),
     mapMix: uniform(0),
-    cmbGain: uniform(1.6),
+    cmbGain: uniform(0.62),
+    cmbFogGain: uniform(1.6),
     eclX: uniform(new Vector3(1, 0, 0)),
     eclY: uniform(new Vector3(0, 0, -1)),
     sweepStart: uniform(0),
@@ -238,10 +244,10 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
     // more saturated (cooler, deeper light), bright cores bleach toward white — the Rayleigh-ish look of a glow.
     const glow = (delta: F): V3 => {
       const c = max(col0.add(dCol.mul(delta.mul(u.tempVar))), vec3(0));
-      const e = exp(delta.mul(u.contrast).sub(u.contrast.mul(u.contrast).mul(0.3)));
+      const e = exp(delta.mul(u.contrast).sub(u.contrast.mul(u.contrast).mul(0.05)));
       const lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
       const dim = float(1).sub(smoothstep(0.2, 1.4, e));
-      const sat = mix(vec3(lum), c, float(1).add(u.saturate.mul(dim)));
+      const sat = mix(vec3(lum), c, float(1.15).add(u.saturate.mul(dim)));
       return max(sat, vec3(0)).mul(e);
     };
 
@@ -249,7 +255,7 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
     const wSum = float(0).toVar();
     const dSum = float(0).toVar();
     const segLen = tExit.sub(tEnter);
-    const cmbTerm = dT.mul(u.cmbW).mul(u.cmbGain);
+    const cmbTerm = dT.mul(u.cmbW).mul(u.cmbFogGain);
 
     If(u.fogOn.greaterThan(0.5), () => {
       const marchLen = min(segLen, u.marchMax);
@@ -264,7 +270,7 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
         const big = texture3D(o.field, q.mul(0.33).add(vec3(0.13, 0.57, 0.29))).level(float(0)).g;
         const mid = texture3D(o.field, q).level(float(0)).b;
         const fine = texture3D(o.field, q.mul(2.3).add(vec3(0.31, 0.17, 0.59)).add(mid.mul(0.025))).level(float(0)).b;
-        const n = big.mul(0.9).add(mid.mul(0.55)).add(fine.mul(0.3));
+        const n = big.mul(0.35).add(mid.mul(0.75)).add(fine.mul(0.55));
         // Dark-matter wells: smoothed δ (B), only where it is overdense; photons climbing out look cooler.
         const dmf = texture3D(o.field, q.mul(o.dmScale).add(vec3(0.5, 0.21, 0.73))).level(float(0)).b;
         const well = smoothstep(0.4, 2.0, dmf);
@@ -301,29 +307,34 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
       const cy = floor(cyc);
       const ph = fract(cyc);
       const hs = cy.mul(17.31).add(j * 7.13);
-      const centre = vec3(hash(hs), hash(hs.add(3.7)), hash(hs.add(8.1))).mul(2).sub(1).mul(o.shellSpread);
+      const centre = vec3(hash(hs), hash(hs.add(3.7)), hash(hs.add(8.1))).mul(2).sub(1).mul(o.shellSpread).add(u.shellOrigin);
       const r = ph.mul(u.waveR).mul(0.7 + 0.6 * ((j * 0.414) % 1));
       const w = u.waveW.mul(ph.mul(0.6).add(0.5));
       const env = smoothstep(0, 0.1, ph).mul(pow(float(1).sub(ph), 1.5));
       const oc = centre.sub(ro);
       const s0 = dot(oc, rd);
       const b2 = max(dot(oc, oc).sub(s0.mul(s0)), 0);
-      const disc = r.mul(r).sub(b2);
-      const sq = sqrt(max(disc, 0));
-      const base = w.mul(r).div(sqrt(max(disc, 0).add(r.mul(w).mul(1.5)).add(1e-6)));
-      const outer = max(sqrt(b2).sub(r), 0).div(w);
-      const fall = exp(outer.mul(outer).negate());
-      // A faint second ripple trails the front (the wave train), seen as a soft inner ring.
-      const r2 = max(r.sub(w.mul(9)), 0);
-      const disc2 = r2.mul(r2).sub(b2);
-      const inner = w.mul(r2).div(sqrt(max(disc2, 0).add(r2.mul(w).mul(3)).add(1e-6))).mul(step(0, disc2)).mul(0.25);
-      const sN = s0.sub(sq);
-      const sF = s0.add(sq);
-      const att = step(0, sN).mul(exp(u.sigma.mul(max(sN, 0)).negate())).add(step(0, sF).mul(exp(u.sigma.mul(max(sF, 0)).negate())));
-      shells = shells.add(env.mul(base.mul(fall).add(inner)).mul(att));
+      const bb = sqrt(b2);
+      // A short wave train: the front plus two weaker trailing ripples, all limb-brightened.
+      let train: F = float(0);
+      [1, 0.55, 0.3].forEach((amp, m) => {
+        const rm = max(r.sub(u.waveR.mul(0.16 * m)), 0);
+        const disc = rm.mul(rm).sub(b2);
+        const sq = sqrt(max(disc, 0));
+        const base = w.mul(rm).div(sqrt(max(disc, 0).add(rm.mul(w).mul(1.5)).add(1e-6)));
+        const outer = max(bb.sub(rm), 0).div(w);
+        const fall = exp(outer.mul(outer).negate());
+        const sN = s0.sub(sq);
+        const sF = s0.add(sq);
+        const att = step(0, sN)
+          .mul(exp(u.sigma.mul(max(sN, 0)).negate()))
+          .add(step(0, sF).mul(exp(u.sigma.mul(max(sF, 0)).negate())));
+        train = train.add(base.mul(fall).mul(att).mul(amp));
+      });
+      shells = shells.add(env.mul(train));
     }
     // Patchy: the fronts are brighter where the fog is denser, so they never read as clean geometric circles.
-    L.addAssign(col0.mul(u.intensity).mul(shells).mul(u.waveAmp).mul(exp(fogDelta.mul(0.9)).mul(wSum)));
+    L.addAssign(col0.mul(u.intensity).mul(shells).mul(u.waveAmp).mul(exp(fogDelta.mul(0.5)).mul(wSum)));
 
     // ── The wall: last-scattering surface. Physical glow → colour-mapped Planck ΔT.
     const phys = glow(dT.mul(u.cmbGain)).mul(u.intensity).mul(u.physGain);
@@ -461,6 +472,92 @@ export function createPhotonMaterial(u: PhotonUniforms, seeds: InstancedBufferAt
   const yy = uv().y.sub(0.5).mul(2);
   const prof = exp(yy.mul(yy).mul(-28)).add(exp(yy.mul(yy).mul(-4)).mul(0.18));
   mat.colorNode = u.colour.mul(prof.mul(att).mul(u.amount));
+  mat.opacityNode = float(1);
+  return mat;
+}
+
+// ── Plasma motes ─────────────────────────────────────────────────────────────────────────────────────────
+// The fog's matter — nuclei and electrons — as countless faint glowing specks around the observer. They give the
+// glow depth and parallax, and they carry the sound waves: each acoustic front sweeps the specks into a denser,
+// brighter shell (stateless: displacement = f(seed, wave clock)). They fade as atoms form and the fog clears.
+
+export interface MoteUniforms {
+  amount: FU;
+  sigma: FU;
+  colour: V3U;
+  size: FU;
+  clock: FU;
+  waveClock: FU;
+  waveAmp: FU;
+  waveR: FU;
+  waveW: FU;
+  /** Slow inflow toward the observer (world units) — the fog streaming past. */
+  flow: FU;
+  shellOrigin: V3U;
+}
+
+export function createMoteUniforms(): MoteUniforms {
+  return {
+    amount: uniform(1),
+    sigma: uniform(0.4),
+    colour: uniform(new Vector3(1, 1, 1)),
+    size: uniform(0.03),
+    clock: uniform(0),
+    waveClock: uniform(0),
+    waveAmp: uniform(0),
+    waveR: uniform(7),
+    waveW: uniform(0.4),
+    flow: uniform(0),
+    shellOrigin: uniform(new Vector3(0, 0, -5)),
+  };
+}
+
+export function createMoteMaterial(
+  u: MoteUniforms,
+  seeds: InstancedBufferAttribute,
+  o: { shellCount: number; shellSpread: number; radius: number },
+): SpriteNodeMaterial {
+  const sd = instancedBufferAttribute<'vec4'>(seeds, 'vec4'); // xyz in a ball of `radius`, w random
+  const w = sd.w;
+  // Thermal jitter + a slow drift through the observer (wrapped in the ball so the density stays uniform).
+  const jit = vec3(
+    sin(u.clock.mul(w.mul(3.1).add(1.3)).add(w.mul(40.1))),
+    sin(u.clock.mul(w.mul(2.7).add(1.1)).add(w.mul(73.7))),
+    sin(u.clock.mul(w.mul(3.7).add(0.9)).add(w.mul(19.3))),
+  ).mul(0.06);
+  const span = o.radius * 2;
+  const z = fract(sd.z.add(u.flow).div(span).add(0.5)).sub(0.5).mul(span);
+  const base = vec3(sd.x, sd.y, z).add(jit);
+  // Acoustic fronts (same hashed centres and clock as the sky's shells): pull specks into the front.
+  let disp: V3 = vec3(0);
+  let dens: F = float(0);
+  for (let j = 0; j < o.shellCount; j++) {
+    const hj = (j * 0.6180339887) % 1;
+    const cyc = u.waveClock.mul(0.75 + 0.5 * hj).add((j * 0.37) % 1);
+    const cy = floor(cyc);
+    const ph = fract(cyc);
+    const hs = cy.mul(17.31).add(j * 7.13);
+    const centre = vec3(hash(hs), hash(hs.add(3.7)), hash(hs.add(8.1))).mul(2).sub(1).mul(o.shellSpread).add(u.shellOrigin);
+    const r = ph.mul(u.waveR).mul(0.7 + 0.6 * ((j * 0.414) % 1));
+    const ww = u.waveW.mul(ph.mul(0.6).add(0.7));
+    const env = smoothstep(0, 0.1, ph).mul(float(1).sub(ph));
+    const dv = base.sub(centre);
+    const d = length(dv).add(1e-4);
+    const x = d.sub(r).div(ww);
+    const g = exp(x.mul(x).negate()).mul(env);
+    disp = disp.add(dv.div(d).mul(x.mul(g).mul(ww).mul(-0.9)));
+    dens = dens.add(g);
+  }
+  const pos = base.add(disp.mul(u.waveAmp));
+  const dCam = length(pos.sub(cameraPosition));
+  const atten = exp(u.sigma.mul(dCam).negate()).mul(smoothstep(0.5, 1.3, dCam));
+  const r2 = uv().sub(0.5).length().mul(2);
+  const core = exp(r2.mul(r2).mul(-16));
+  const mat = new SpriteNodeMaterial({ transparent: true, depthWrite: false, depthTest: false, blending: AdditiveBlending });
+  mat.positionNode = pos;
+  mat.scaleNode = u.size.mul(float(0.5).add(w.mul(w).mul(1.2)));
+  const bright = float(0.35).add(w.mul(0.65)).mul(float(1).add(dens.mul(u.waveAmp).mul(1.6)));
+  mat.colorNode = u.colour.mul(core.mul(atten).mul(bright).mul(u.amount));
   mat.opacityNode = float(1);
   return mat;
 }

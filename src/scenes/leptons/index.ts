@@ -57,25 +57,25 @@ export const params = {
   box: 12,
   boxAhead: 0.3,
   fov: 50,
-  focus: 2.6,
-  aperture: 0.008,
-  maxBlur: 0.04,
+  focus: 2.0,
+  aperture: 0.02,
+  maxBlur: 0.06,
   minPx: 1.1,
   near: 0.6,
   fog: 4.2,
-  share: { pairs: 0.5, neutrinos: 0.18, silk: 0.22, events: 0.06 },
+  share: { pairs: 0.6, neutrinos: 0.05, silk: 0.16, events: 0.06 },
   /** Nucleons and excess electrons: 1 per 50 hadron slots, as in the hadrons scene. */
   nucleonPerParticle: 0.14 / 6 / 50,
   bathSteps: { low: 8, medium: 14, high: 18 } as Record<string, number>,
   bathLength: 11,
-  bathIntensity: 0.11,
+  bathIntensity: 0.05,
   bathFloor: 0.02,
   currents: { scale: 0.35, sharp: 3, voids: 0.95, floor: 0.25 },
   morphRate: 0.03,
   massiveBeta: 0.16,
   trailWall: 0.3,
   pairTrailWall: 0.05,
-  silk: { beads: 160, length: 4, width: 0.006, intensity: 0.42 },
+  silk: { beads: 160, length: 4, width: 0.006, intensity: 0.45 },
   events: { period: 1.8, approach: 0.1, flight: 0.7, rate: 0.9 },
   beats: {
     /** Neutrino decoupling: ~1–2 s, drawn over these locals. */
@@ -86,29 +86,46 @@ export const params = {
     excessStart: 0.68,
     excessEnd: 0.8,
   },
+  /**
+   * Hero nucleon: a neutron pinned in front of the camera that β-decays on the 0.92 beat (its rank is set from the
+   * computed neutron share there), then sits at frame centre for the zoom into nucleosynthesis.
+   */
+  hero: { from: 0.5, to: 0.62, decayAt: 0.92, decayLength: 0.05, start: [0.32, 0.08, -2.2] as const, end: [0, 0, -1.5] as const },
   camera: { travel: 3.5, drift: 0.1, sway: 0.25 },
   shape: {
     c: 0.6,
     flowK: 1.6,
     flowSteps: 10,
-    neutrinoBeads: 160,
+    neutrinoBeads: 10,
     neutrinoLength: 6,
     neutrinoWidth: 0.0045,
-    neutrinoIntensity: 1.3,
+    neutrinoIntensity: 1.1,
     neutrinoTint: [0.72, 0.62, 1.0],
     neutrinoSpeed: 2.2,
     pairWidth: 0.009,
     pairIntensity: 1.6,
     pairJitter: 0.05,
-    electronTint: [1.0, 0.86, 0.66],
-    positronTint: [0.55, 0.85, 1.0],
+    electronTint: [1.0, 0.7, 0.4],
+    positronTint: [0.38, 0.72, 1.0],
     excessWidth: 0.011,
     excessIntensity: 1.8,
     nucleonWidth: 0.12,
     nucleonIntensity: 0.9,
     nucleonCore: 5,
     gold: [1.0, 0.68, 0.26],
-    neutronTint: [0.82, 0.8, 0.74],
+    /** Neutral cool, the hue of the bbn scene's neutrons (#b3bcc8), brightened. */
+    neutronTint: [0.62, 0.69, 0.8],
+    /** Toward the bbn scene's proton colour (#e35b3a). */
+    protonHandoff: [0.95, 0.34, 0.14],
+    nucleonQuarkRadius: 0.03,
+    nucleonQuarkWidth: 0.008,
+    nucleonQuarkIntensity: 1.2,
+    decayFlight: 0.9,
+    colourCharge: [
+      [1.0, 0.16, 0.1],
+      [0.2, 1.0, 0.3],
+      [0.16, 0.36, 1.0],
+    ],
   } satisfies LeptonShape as LeptonShape,
 };
 
@@ -160,6 +177,12 @@ export default (): CosmicScene => {
   const uEventRate = uniform(0);
   const uCreation = uniform(0);
   const neutron0 = abundancesAt(CHAPTER.tStart).neutrons;
+  const heroOffset = new Vector3();
+  // Rank just below the neutron share at the decay beat: the hero is a neutron until then, a proton after.
+  const heroRank = (() => {
+    const at = (l: number) => abundancesAt(timeInChapter(CHAPTER, l).t).neutrons;
+    return 0.5 * (at(params.hero.decayAt - 0.004) + at(params.hero.decayAt + 0.004));
+  })();
 
   const self: CosmicScene = {
     id: 'leptons',
@@ -188,6 +211,7 @@ export default (): CosmicScene => {
       u.curVoids.value = params.currents.voids;
       u.curFloor.value = params.currents.floor;
       u.neutron0.value = neutron0;
+      u.heroRank.value = heroRank;
 
       const n = ctx.quality.particles;
       const gain = tierGain(n);
@@ -225,11 +249,11 @@ export default (): CosmicScene => {
             approach: params.events.approach,
             flight: params.events.flight,
             particleWidth: s.pairWidth * 1.4,
-            flashWidth: 0.12,
+            flashWidth: 0.06,
             photonWidth: 0.005,
             matter: vec3(s.electronTint[0], s.electronTint[1], s.electronTint[2]).mul(2.2 * gain),
             antimatter: vec3(s.positronTint[0], s.positronTint[1], s.positronTint[2]).mul(2.2 * gain),
-            flash: vec3(1, 0.97, 0.92).mul(5 * gain),
+            flash: vec3(1, 0.97, 0.92).mul(4 * gain),
             photon: thermalWhite.mul(2.4 * gain),
             creation: uCreation,
           }),
@@ -290,6 +314,19 @@ export default (): CosmicScene => {
       camera.lookAt(target);
       camera.rotateZ(0.03 * Math.sin(tC * 0.013 + local));
       camera.updateMatrixWorld();
+      // Hero nucleon: drifts from the side to frame centre as the chapter ends (the zoom into BBN lands on it).
+      const h = params.hero;
+      const e = smoothstep(h.from, 1, local);
+      heroOffset.set(
+        h.start[0] + (h.end[0] - h.start[0]) * e + 0.03 * Math.sin(tC * 0.29),
+        h.start[1] + (h.end[1] - h.start[1]) * e + 0.02 * Math.sin(tC * 0.23 + 1),
+        h.start[2] + (h.end[2] - h.start[2]) * e,
+      );
+      heroOffset.applyQuaternion(camera.quaternion);
+      u.heroPos.value.copy(camera.position).add(heroOffset);
+      u.heroVis.value = smoothstep(h.from, h.to, local);
+      u.decay.value = smoothstep(h.decayAt - 0.005, h.decayAt + h.decayLength, local);
+      u.handoff.value = smoothstep(0.72, 1, local);
       updateViewRig(view, camera, height, params.boxAhead);
       bath.mesh.position.copy(camera.position);
     },

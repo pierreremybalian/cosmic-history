@@ -107,7 +107,7 @@ export function createSatellites(o: SatelliteOptions): Satellites {
   const sToGo = clamp(smt.sub(u.sink).div(smt), 0, 1);
   const stripped = float(1).sub(sToGo);
   // Stream length grows as the satellite is disrupted; a stripped star lags behind along the orbit.
-  const lagAng = S.y.mul(stripped.mul(5.5)).mul(sw.sign());
+  const lagAng = S.y.mul(stripped.mul(3.2)).mul(sw.sign());
   const sRad = sr0.mul(pow(sToGo, 0.6)).add(0.05).mul(float(1).add(S.z.mul(stripped.mul(2.0).add(0.4))));
   const sAng = sph.add(stripped.mul(sw)).add(u.spin.mul(0.5)).sub(lagAng);
   const base = orbitPos(sRad, sAng, sinc, snode);
@@ -118,7 +118,7 @@ export function createSatellites(o: SatelliteOptions): Satellites {
   const vis = smoothstep(0.02, 0.2, stripped).mul(float(1).sub(smoothstep(0.85, 1.0, stripped).mul(0.7)));
   const pd = exp(d.mul(d).mul(-5)).mul(float(1).sub(smoothstep(0.8, 1, d)));
   const tint = mix(vec3(pal.old.x, pal.old.y, pal.old.z), vec3(pal.young.x, pal.young.y, pal.young.z), S2.y.mul(0.35));
-  streamMat.colorNode = tint.mul(S2.x).mul(vis).mul(u.brightness).mul(0.3);
+  streamMat.colorNode = tint.mul(S2.x).mul(vis).mul(u.brightness).mul(0.18);
   streamMat.opacityNode = pd;
   const stream = new Sprite(streamMat);
   stream.count = m;

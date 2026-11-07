@@ -13,7 +13,7 @@ import { CHAPTERS } from '../time/chapters.ts';
 
 <script>
   import { createEngine } from './renderer.ts';
-  import { $chapterId, $rendererStatus } from '../state/store.ts';
+  import { $chapterId, $rendererStatus, $sceneStatus, $time } from '../state/store.ts';
 
   const root = document.getElementById('cosmos')!;
   const canvas = document.getElementById('cosmos-canvas') as HTMLCanvasElement;
@@ -23,6 +23,19 @@ import { CHAPTERS } from '../time/chapters.ts';
   $chapterId.subscribe((id) => {
     stills.forEach((s) => s.classList.toggle('is-on', s.dataset.still === id));
   });
+  // While the current chapter's scene is still loading (e.g. right after a long jump), show its still.
+  let stillsFetched = false;
+  const updateLoading = () => {
+    const status = $sceneStatus.get()[$time.get().sceneId];
+    const loading = $rendererStatus.get() === 'ready' && status !== 'ready' && status !== 'failed';
+    root.classList.toggle('is-loading', loading);
+    if (loading && !stillsFetched) {
+      stillsFetched = true;
+      stills.forEach((el) => (el.style.backgroundImage = `url(/stills/${el.dataset.still}.webp)`));
+    }
+  };
+  $sceneStatus.subscribe(updateLoading);
+  $chapterId.subscribe(updateLoading);
   $rendererStatus.subscribe((s) => {
     root.setAttribute('data-status', s);
     // Stills are only fetched when they are needed.
@@ -69,6 +82,10 @@ import { CHAPTERS } from '../time/chapters.ts';
   .cosmos[data-status='fallback'] .stills,
   .cosmos[data-status='error'] .stills {
     opacity: 1;
+  }
+  .cosmos.is-loading .stills {
+    opacity: 1;
+    transition-delay: 0.25s;
   }
   .cosmos[data-status='fallback'] canvas,
   .cosmos[data-status='error'] canvas {

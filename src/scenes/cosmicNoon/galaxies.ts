@@ -63,13 +63,14 @@ import { EMISSION_LINES_NM } from '../../shared/color.ts';
 import { WORLD_BOX, type PrimordialField } from '../../shared/gaussianField.ts';
 import { gaussian, mulberry32 } from '../../shared/math.ts';
 import type { RenderContext } from '../types.ts';
-import type { FloatUniform } from '../../render/globals.ts';
+import type { FloatUniform, Vec2Uniform as Vec2Uniform2 } from '../../render/globals.ts';
 
 type F = Node<'float'>;
 type V2 = Node<'vec2'>;
 type V3 = Node<'vec3'>;
-const mkVec3 = () => uniform(new Vector3());
-export type Vec3Uniform = ReturnType<typeof mkVec3>;
+// Type helper only (never called).
+const _mkVec3 = () => uniform(new Vector3());
+export type Vec3Uniform = ReturnType<typeof _mkVec3>;
 
 /** Stellar populations and line physics used for galaxy colours (all converted to RGB on the CPU). */
 export const STELLAR = {
@@ -142,16 +143,20 @@ export interface GalaxyLightIn {
   minor?: F;
   /** Stellar-population age 0 (young galaxy: blue, small bulge) → 1 (mature). Default 1. */
   age?: F;
+  /** Radius where the arms begin (the bar's ends in barred spirals). Default 0.12. */
+  armStart?: F | number;
 }
 
 /** Arm phase at disk-plane polar coords (shared with particles): a ridge where cos(phase) = 1. */
 export function armPhase(r: F, th: F, spin: F, seed: F | number, arms: F | number = ARMS.count, tanPitch: F | number = ARMS.tanPitch): F {
   const m = typeof arms === 'number' ? float(arms) : arms;
   const tp = typeof tanPitch === 'number' ? float(tanPitch) : tanPitch;
+  // Trailing arms: the ridge angle decreases outward while the pattern turns toward +θ (clockwise seen from +Y,
+  // the Milky Way's sense of rotation seen from the North Galactic Pole).
   return th
     .sub(spin)
     .mul(m)
-    .sub(log(max(r, 0.012)).mul(m).div(tp))
+    .add(log(max(r, 0.012)).mul(m).div(tp))
     .add(typeof seed === 'number' ? float(seed * 6.2832) : seed.mul(6.2832));
 }
 
@@ -172,8 +177,8 @@ export function galaxyLight(i: GalaxyLightIn, pal: StellarPalette): V3 {
   const bar = i.bar ?? float(0);
   const ba = i.spin.add(i.seed.mul(3.1));
   const pb = vec2(pw.x.mul(cos(ba)).add(pw.y.mul(sin(ba))), pw.y.mul(cos(ba)).sub(pw.x.mul(sin(ba))));
-  const rb = length(vec2(pb.x.div(bar.mul(2.2).add(1)), pb.y.mul(bar.mul(0.5).add(1))));
-  const bulge = exp(rb.div(-0.035)).mul(0.8).add(exp(rb.div(-0.11)).mul(0.28));
+  const rb = length(vec2(pb.x.div(bar.mul(3.2).add(1)), pb.y.mul(bar.mul(0.6).add(1))));
+  const bulge = exp(rb.div(-0.035)).mul(0.8).add(exp(rb.div(-0.11)).mul(0.28)).mul(float(1).sub(smoothstep(0.55, 1.0, r)));
 
   // Disk with density-wave arms, broken up by large-scale noise (flocculence) and segment brightness.
   const nA = mx_noise_float(vec3(pw.mul(2.4), i.seed.mul(11.3)));
@@ -181,11 +186,12 @@ export function galaxyLight(i: GalaxyLightIn, pal: StellarPalette): V3 {
   const phase = armPhase(r, th, i.spin, i.seed, i.arms ?? ARMS.count, i.tanPitch ?? ARMS.tanPitch).add(nA.mul(floc).mul(2.6));
   const ridge = pow(cos(phase).mul(0.5).add(0.5), 2.6).add(pow(cos(phase.add(Math.PI)).mul(0.5).add(0.5), 3.0).mul(minor));
   const segments = smoothstep(-0.45, 0.55, nB.add(float(0.35).sub(floc.mul(0.3))));
-  const armOn = i.settle.mul(smoothstep(0.05, 0.22, r)).mul(float(1).sub(smoothstep(0.55, 1.0, r).mul(0.6)));
+  const a0 = typeof i.armStart === 'number' ? float(i.armStart) : (i.armStart ?? float(0.12));
+  const armOn = i.settle.mul(smoothstep(a0.mul(0.45), a0.mul(1.6), r)).mul(float(1).sub(smoothstep(0.55, 1.0, r).mul(0.6)));
   const arm = ridge.mul(segments).mul(armOn);
   const disk = exp(r.div(-0.24)).mul(edge);
   const oldDisk = disk.mul(mix(float(1), arm.mul(0.85).add(0.55), armOn.mul(0.8)));
-  const youngDisk = exp(r.div(-0.4)).mul(edge).mul(smoothstep(0.04, 0.2, r));
+  const youngDisk = exp(r.div(-0.4)).mul(edge).mul(smoothstep(a0.mul(0.35), a0.mul(1.5), r));
 
   // Giant star-forming clumps of unsettled disks (cosmic-noon "clump clusters").
   const n1 = mx_noise_float(vec3(pw.mul(3.0), i.seed.mul(13.7)));
@@ -205,8 +211,8 @@ export function galaxyLight(i: GalaxyLightIn, pal: StellarPalette): V3 {
     .mul(oldDisk.mul(0.75))
     .add(v3(pal.bulge).mul(bulge.mul(float(1).sub(bar.mul(0.2))).mul(mix(float(0.3), float(1), age))))
     .mul(mix(float(0.45), float(1), age));
-  const young = v3(pal.young).mul(youngDisk.mul(arm.mul(1.4).add(clump.mul(2.6))).mul(i.sf.mul(1.3).add(0.12)));
-  const hii = v3(pal.hii).mul(knots.mul(youngDisk).mul(i.sf).mul(3.2));
+  const young = v3(pal.young).mul(youngDisk.mul(arm.mul(1.5).add(clump.mul(3.4))).mul(i.sf.mul(1.4).add(0.12)));
+  const hii = v3(pal.hii).mul(knots.mul(youngDisk).mul(i.sf).mul(4.2));
   const spiral = old.add(young).add(hii).mul(float(1).sub(lane.mul(0.75)));
 
   // de Vaucouleurs (Sérsic n = 4) elliptical, r_e ≈ 0.2 in disk units, capped core.
@@ -508,7 +514,7 @@ export function createGalaxyImpostors(ctx: RenderContext, opts: GalaxyImpostorOp
   const incl = min(float(1).div(cosi), 2.5);
   // Soft halo of light around star-forming galaxies: the "blaze" of cosmic noon.
   const sl = length(s);
-  const halo = mix(v3(pal.hii), v3(pal.young), 0.55).mul(exp(sl.mul(sl).mul(-1.6)).mul(sf).mul(0.16));
+  const halo = mix(v3(pal.hii), v3(pal.young), 0.55).mul(exp(sl.mul(sl).mul(-3.2)).mul(sf).mul(0.07));
   const outer = float(1).sub(smoothstep(0.85, 1.2, sl));
   const clear = smoothstep(u.clearRadius.mul(0.6), u.clearRadius.add(1e-6), length(center.sub(u.clearCenter)));
   const visible = alive.mul(near).mul(mix(float(1), u.milkyWay, isMW)).mul(mix(clear, float(1), isMW));
@@ -541,6 +547,8 @@ export interface SpiralGalaxyOptions {
   clumps?: number;
   /** Disk scale length in units of the visible radius. */
   scaleLength?: number;
+  /** Radius where the arms begin (bar ends). */
+  armStart?: number;
 }
 
 export interface SpiralGalaxy {
@@ -561,6 +569,9 @@ export interface SpiralGalaxy {
     dust: FloatUniform;
   };
   armSeed: number;
+  /** Star and dust sprite materials (e.g. for near-camera fades). */
+  starsMaterial: SpriteNodeMaterial;
+  dustMaterial: SpriteNodeMaterial;
   dispose(): void;
 }
 
@@ -575,6 +586,7 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
   const armSeed = opts.armSeed ?? 0.15;
   const hR = opts.scaleLength ?? 0.25;
   const nClumps = opts.clumps ?? 9;
+  const armStart = opts.armStart ?? 0.12;
   const m = ARMS.count;
 
   const clumps: [number, number, number][] = [];
@@ -587,16 +599,16 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
     }
   };
   const wrapPi = (a: number) => a - Math.PI * 2 * Math.round(a / (Math.PI * 2));
-  // Angle of an arm ridge at radius r: phase = m(θ − spin) − (m/tanψ) ln r + 2π·seed = 2πj (+π for minor arms).
+  // Angle of an arm ridge at radius r: phase = m(θ − spin) + (m/tanψ) ln r + 2π·seed = 2πj (+π for minor arms).
   const ridgeTheta = (r: number, j: number, minorArm: boolean) =>
-    Math.log(Math.max(r, 0.012)) / ARMS.tanPitch - (armSeed * 2 * Math.PI) / m + (2 * Math.PI * j + (minorArm ? Math.PI : 0)) / m;
+    -Math.log(Math.max(r, 0.012)) / ARMS.tanPitch - (armSeed * 2 * Math.PI) / m + (2 * Math.PI * j + (minorArm ? Math.PI : 0)) / m;
 
   // OB associations along the arms: young stars and HII regions are born in groups, not uniformly.
   const nAssoc = Math.max(60, Math.round(N / 140));
   const assoc: [number, number, number][] = [];
   for (let a = 0; a < nAssoc; a++) {
     const minorArm = rand() < ARMS.minor / (1 + ARMS.minor);
-    const r = 0.1 + expR(hR * 1.4, 0.95);
+    const r = armStart * 0.85 + expR(hR * 1.4, 0.95);
     const th = ridgeTheta(r, Math.floor(rand() * m), minorArm) + gaussian(rand) * 0.32;
     assoc.push([r, th, 0.006 + 0.022 * Math.pow(rand(), 2)]);
   }
@@ -609,10 +621,10 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
     let r: number;
     let th: number;
     let z: number;
-    let lum = Math.exp(gaussian(rand) * 0.55);
+    const lum = Math.exp(gaussian(rand) * 0.55);
     if (u < 0.13) {
       pop = POP.bulge;
-      r = Math.abs(gaussian(rand)) * 0.06 + Math.abs(gaussian(rand)) * 0.025;
+      r = Math.abs(gaussian(rand)) * 0.075 + Math.abs(gaussian(rand)) * 0.03;
       th = rand() * Math.PI * 2;
       z = gaussian(rand) * 0.03;
     } else if (u < 0.68) {
@@ -624,7 +636,7 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
       pop = u < 0.955 ? POP.young : POP.hii;
       if (pop === POP.young && rand() < 0.45) {
         // diffuse young disk hugging the arms
-        r = 0.1 + expR(hR * 1.4, 0.98);
+        r = armStart * 0.85 + expR(hR * 1.4, 0.98);
         th = ridgeTheta(r, Math.floor(rand() * m), rand() < ARMS.minor / (1 + ARMS.minor)) + gaussian(rand) * 0.45;
       } else {
         const a = assoc[Math.floor(rand() * nAssoc)]!;
@@ -678,8 +690,8 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
   const th = mix(B.y, A.y, s).add(u.spin.mul(omega));
   // Bulge stars are stretched into a bar that turns with the pattern.
   const barStretch = isBulge.mul(u.bar);
-  const bx = r.mul(cos(A.y)).mul(barStretch.mul(1.9).add(1));
-  const bz = r.mul(sin(A.y)).mul(float(1).sub(barStretch.mul(0.4)));
+  const bx = r.mul(cos(A.y)).mul(barStretch.mul(2.6).add(1));
+  const bz = r.mul(sin(A.y)).mul(float(1).sub(barStretch.mul(0.45)));
   const barAng = u.spin.add(armSeed * 3.1);
   const bulgePos = vec3(bx.mul(cos(barAng)).sub(bz.mul(sin(barAng))), A.z, bx.mul(sin(barAng)).add(bz.mul(cos(barAng))));
   const thickness = mix(float(4.0), float(1.0), s);
@@ -704,7 +716,7 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
   const colOld = v3(pal.old).mul(isOld).mul(armBoost).mul(0.13 * k);
   const colBulge = v3(pal.bulge).mul(isBulge).mul(0.1 * k);
   const colYoung = v3(pal.young).mul(isYoung).mul(sfGain).mul(life.mul(0.5).add(0.5)).mul(0.2 * k);
-  const colHii = v3(pal.hii).mul(isHii).mul(sfGain).mul(life).mul(0.3 * k);
+  const colHii = v3(pal.hii).mul(isHii).mul(sfGain).mul(life).mul(0.3 * k).mul(float(1).sub(smoothstep(0.6, 1.0, r).mul(0.75)));
   const col = colOld.add(colBulge).add(colYoung).add(colHii).mul(B.w).mul(dust).mul(u.brightness);
 
   const size = isOld.mul(0.0075).add(isBulge.mul(0.0085)).add(isYoung.mul(0.0075)).add(isHii.mul(0.016));
@@ -725,7 +737,7 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
   const planeMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide });
   const pp = vec2(positionLocal.x, positionLocal.z);
   const glowLight = galaxyLight(
-    { p: pp, seed: float(armSeed), spin: u.spin, settle: u.settle, sf: u.sf, ell: float(0), bar: u.bar, floc: float(0.18), minor: float(ARMS.minor) },
+    { p: pp, seed: float(armSeed), spin: u.spin, settle: u.settle, sf: u.sf, ell: float(0), bar: u.bar, floc: float(0.18), minor: float(ARMS.minor), armStart },
     pal,
   );
   planeMat.colorNode = glowLight.mul(u.glow).mul(u.brightness);
@@ -740,7 +752,7 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
   const dA = new Float32Array(nDust * 4); // r, θ (settled), z, size
   const dB = new Float32Array(nDust * 4); // r, θ (clumpy), opacity, seed
   for (let k = 0; k < nDust; k++) {
-    const r = 0.1 + expR(hR * 1.3, 0.9);
+    const r = armStart * 0.85 + expR(hR * 1.3, 0.9);
     const minorArm = rand() < ARMS.minor / (1 + ARMS.minor);
     const th = ridgeTheta(r, Math.floor(rand() * m), minorArm) - ARMS.dustOffset / m + gaussian(rand) * 0.16;
     const c = clumps[Math.floor(rand() * nClumps)]!;
@@ -782,6 +794,8 @@ export function createSpiralGalaxy(opts: SpiralGalaxyOptions): SpiralGalaxy {
     group,
     uniforms: u,
     armSeed,
+    starsMaterial: stars,
+    dustMaterial: dustMat,
     dispose() {
       stars.dispose();
       dustMat.dispose();
@@ -813,6 +827,9 @@ export const MW_FRAME = (() => {
     distance: 3.3,
   };
 })();
+
+/** The Milky Way's arms begin at the ends of its bar, ~3.3 kpc out (in units of its 15 kpc disk radius). */
+export const MW_ARM_START = 0.22;
 
 /** Gentle idle sway of the camera around the Milky Way, shared so cosmicNoon → darkEnergy match exactly. */
 export function mwSway(elapsed: number): number {
@@ -893,8 +910,11 @@ export interface Tiles {
   /** Parent of the 27 tile sprites (centre first). */
   group: Group;
   sprites: Sprite[];
-  /** Place tiles: the periodic box is scaled by `scale` about `anchor` (world), which stays fixed. */
-  place(anchor: Vector3, scale: number): void;
+  /**
+   * Place tiles: the periodic box is scaled by `scale` about `anchor` (world), which stays fixed; then shifted by
+   * −`shift`. Tiles entirely farther than `cullRadius` from `cullCenter` are hidden.
+   */
+  place(anchor: Vector3, scale: number, shift?: Vector3, cullCenter?: Vector3, cullRadius?: number): void;
 }
 
 /**
@@ -924,10 +944,20 @@ export function tileBox(material: SpriteNodeMaterial, centreCount: number, outer
   return {
     group,
     sprites,
-    place(anchor, scale) {
+    place(anchor, scale, shift, cullCenter, cullRadius) {
+      const half = (WORLD_BOX / 2) * scale;
       for (let n = 0; n < sprites.length; n++) {
+        const sp = sprites[n]!;
         // world = objectPos + boxPos·scale; keep the anchor fixed: objectPos = anchor·(1 − scale) + offset·scale
-        sprites[n]!.position.copy(anchor).multiplyScalar(1 - scale).addScaledVector(offsets[n]!, scale);
+        sp.position.copy(anchor).multiplyScalar(1 - scale).addScaledVector(offsets[n]!, scale);
+        if (shift) sp.position.sub(shift);
+        if (cullCenter && cullRadius !== undefined) {
+          // distance from the cull centre to this tile's box (centred on its object position)
+          const dx = Math.max(0, Math.abs(cullCenter.x - sp.position.x) - half);
+          const dy = Math.max(0, Math.abs(cullCenter.y - sp.position.y) - half);
+          const dz = Math.max(0, Math.abs(cullCenter.z - sp.position.z) - half);
+          sp.visible = dx * dx + dy * dy + dz * dz < cullRadius * cullRadius;
+        }
       }
     },
   };
@@ -951,12 +981,12 @@ export interface GalaxySpriteSpec {
 
 export interface GalaxySprites {
   sprite: Sprite;
-  uniforms: { brightness: FloatUniform; spin: FloatUniform; minPx: FloatUniform };
+  uniforms: { brightness: FloatUniform; spin: FloatUniform; minPx: FloatUniform; size: FloatUniform };
   dispose(): void;
 }
 
 /** Camera-facing galaxies at fixed positions (Local Group members), never smaller than `minPx` pixels. */
-export function createGalaxySprites(list: GalaxySpriteSpec[], resolution: { value: { y: number } } & Node<'vec2'>, fovDeg: number): GalaxySprites {
+export function createGalaxySprites(list: GalaxySpriteSpec[], resolution: Vec2Uniform2, fovDeg: number): GalaxySprites {
   const n = Math.max(1, list.length);
   const A = new Float32Array(n * 4); // xyz, radius
   const B = new Float32Array(n * 4); // seed, pa, cosi, brightness
@@ -969,16 +999,17 @@ export function createGalaxySprites(list: GalaxySpriteSpec[], resolution: { valu
   const a = instancedBufferAttribute<'vec4'>(new InstancedBufferAttribute(A, 4), 'vec4');
   const b = instancedBufferAttribute<'vec4'>(new InstancedBufferAttribute(B, 4), 'vec4');
   const c = instancedBufferAttribute<'vec4'>(new InstancedBufferAttribute(Cc, 4), 'vec4');
-  const u = { brightness: uniform(1), spin: uniform(0), minPx: uniform(3) };
+  const u = { brightness: uniform(1), spin: uniform(0), minPx: uniform(3), size: uniform(1) };
   const pal = stellarPalette();
   const mat = new SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
   mat.positionNode = a.xyz;
   const viewZ = modelViewMatrix.mul(vec4(a.xyz, 1)).z.negate();
-  const pxWorld = viewZ.mul(2 * Math.tan(((fovDeg / 2) * Math.PI) / 180)).div((resolution as Node<'vec2'>).y);
-  const quad = max(a.w.mul(2.4), pxWorld.mul(u.minPx));
+  const pxWorld = viewZ.mul(2 * Math.tan(((fovDeg / 2) * Math.PI) / 180)).div(resolution.y);
+  const natural = a.w.mul(2.4).mul(u.size);
+  const quad = max(natural, pxWorld.mul(u.minPx));
   mat.scaleNode = quad;
   // When the sprite is clamped to minPx, keep its total light roughly constant (dimmer per pixel).
-  const shrink = a.w.mul(2.4).div(quad);
+  const shrink = natural.div(quad);
   const s = uv().sub(0.5).mul(2.4);
   const sr = vec2(s.x.mul(cos(b.y)).sub(s.y.mul(sin(b.y))), s.x.mul(sin(b.y)).add(s.y.mul(cos(b.y))));
   const p = vec2(sr.x, sr.y.div(b.z));

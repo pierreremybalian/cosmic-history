@@ -26,8 +26,7 @@ import { domainWarp, fbm } from '../../shared/noise.ts';
 import type { FloatUniform } from '../../render/globals.ts';
 
 type V3 = Node<'vec3'>;
-const mkVec3 = () => uniform(new Vector3(1, 0, 0));
-type Vec3Uniform = ReturnType<typeof mkVec3>;
+import type { Vec3Uniform } from '../cosmicNoon/galaxies.ts';
 
 /** Mean radius of the Moon / Earth, and the Moon's distance (computed by ephemeris) are in Earth radii. */
 export const MOON_RADIUS_RE = 1737.4 / 6371.0;
@@ -58,8 +57,9 @@ export function createEarth(sunColor: Vector3): Earth {
   const n = normalize(positionLocal);
   const lat = asin(clamp(n.y, -1, 1));
   const alat = abs(lat);
-  const p = domainWarp(n.mul(1.35), 0.55, 3);
-  const h = fbm(p.mul(1.6), 6).add(0.02);
+  // Continents: a few large landmasses (low-frequency) with ragged coasts (high-frequency detail).
+  const p = domainWarp(n.mul(0.9), 0.5, 3);
+  const h = fbm(p.mul(1.05), 3).mul(1.25).add(fbm(p.mul(4.2), 4).mul(0.22)).add(0.05);
   const land = smoothstep(0.035, 0.07, h);
   const coast = smoothstep(-0.05, 0.035, h).mul(float(1).sub(land));
   const detail = fbm(n.mul(9.0), 4);
@@ -79,26 +79,28 @@ export function createEarth(sunColor: Vector3): Earth {
   let surface: V3 = mix(ocean, ground, land);
   surface = mix(surface, vec3(0.75, 0.78, 0.82), ice);
 
-  const cloudP = n.mul(2.4).add(vec3(u.time.mul(0.004), 0, u.time.mul(0.002)));
-  const cloudN = fbm(domainWarp(cloudP, 0.35, 2).mul(1.8), 5);
-  const cloud = smoothstep(0.02, 0.38, cloudN.add(smoothstep(0.9, 1.2, alat).mul(0.1)).sub(smoothstep(0.15, 0.4, alat).mul(0.06)))
-    .mul(0.92);
+  // Clouds: swirled bands — the ITCZ near the equator, clear subtropics, storm tracks at mid-latitudes.
+  const cloudP = n.mul(2.2).add(vec3(u.time.mul(0.004), 0, u.time.mul(0.002)));
+  const swirl = domainWarp(cloudP, 0.6, 3);
+  const cloudN = fbm(vec3(swirl.x.mul(1.6), swirl.y.mul(3.2), swirl.z.mul(1.6)), 6);
+  const belts = smoothstep(0.75, 0.95, alat).mul(0.12).add(float(1).sub(smoothstep(0.0, 0.18, alat)).mul(0.08)).sub(smoothstep(0.22, 0.42, alat).mul(float(1).sub(smoothstep(0.5, 0.7, alat))).mul(0.1));
+  const cloud = smoothstep(-0.02, 0.32, cloudN.add(belts)).mul(0.95);
 
   // Lighting in world space.
   const N = normalize(normalWorld);
   const L = u.sunDir;
   const V = normalize(cameraPosition.sub(positionWorld));
   const ndl = dot(N, L);
-  const day = smoothstep(-0.08, 0.3, ndl);
-  const diffuse = max(ndl, 0).mul(0.85).add(day.mul(0.15));
+  const day = smoothstep(-0.04, 0.25, ndl);
+  const diffuse = max(ndl, 0).mul(0.9).add(day.mul(0.06));
   const H = normalize(L.add(V));
-  const glint = pow(max(dot(N, H), 0), 90.0)
-    .mul(1.6)
-    .add(pow(max(dot(N, H), 0), 12.0).mul(0.06))
+  const glint = pow(max(dot(N, H), 0), 400.0)
+    .mul(0.9)
+    .add(pow(max(dot(N, H), 0), 40.0).mul(0.05))
     .mul(float(1).sub(land))
     .mul(float(1).sub(cloud))
     .mul(smoothstep(0.0, 0.2, ndl));
-  const lit = mix(surface, vec3(0.95), cloud).mul(diffuse).mul(sun).mul(2.2).add(sun.mul(glint));
+  const lit = mix(surface, vec3(0.9), cloud).mul(diffuse).mul(sun).mul(1.45).add(sun.mul(glint));
   // Thin blue haze over the day side (the atmosphere seen from above).
   const mu = max(dot(N, V), 0);
   const haze = vec3(0.12, 0.25, 0.6).mul(pow(float(1).sub(mu), 2.0).mul(0.6).add(0.06)).mul(day);
@@ -113,8 +115,8 @@ export function createEarth(sunColor: Vector3): Earth {
   const amu = max(dot(An, Av), 0);
   const rim = pow(float(1).sub(amu), 3.0);
   const andl = dot(An, L);
-  const sunlit = smoothstep(-0.35, 0.45, andl);
-  const dusk = exp(andl.mul(andl).div(-0.02)).mul(0.6);
+  const sunlit = smoothstep(-0.12, 0.4, andl);
+  const dusk = exp(andl.mul(andl).div(-0.006)).mul(0.18).mul(rim).mul(rim);
   const outer = smoothstep(0.0, 0.35, amu); // fade the very edge of the shell
   atmoMat.colorNode = vec3(0.22, 0.48, 1.0)
     .mul(sunlit)

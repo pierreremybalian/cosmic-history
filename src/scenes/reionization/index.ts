@@ -36,6 +36,7 @@ import {
   createStructureWeb,
   fieldNodes,
   focusShift,
+  ramp,
   hazeMaterial,
   type StructureWeb,
 } from '../darkAges/structure.ts';
@@ -68,11 +69,15 @@ const params = {
   fog: {
     /** Extinction per world unit at x_HI = 1 (≈ 70% veiled across the ball). */
     sigmaMax: 0.15,
-    glow: 0.55,
+    glow: 0.42,
     /** Neutral hydrogen haze, colour mapped (it emits nothing visible). */
     colour: [0.05, 0.11, 0.3] as [number, number, number],
-    front: 0.035,
-    frontWidth: 0.26,
+    /** Front emission per perpendicular crossing, and the shell width (world units). */
+    front: 0.0035,
+    /** Front colour = Hα + Hβ / (Case B Balmer decrement 2.86, Osterbrock & Ferland 2006). */
+    balmerDecrement: 2.86,
+    frontWidth: 0.12,
+    densityExponent: 0.35,
     stepFraction: 0.75,
     /** Cap: the fog is smooth apart from the fronts; 28 bubbles per step make steps expensive. */
     maxSteps: 52,
@@ -92,7 +97,7 @@ const params = {
     afterglow: 0.25,
     /** Extra bubble radius from the quasar's own UV (world units). */
     bubbleBoost: 1.1,
-    /** Jets: ≈ 1.3 Mpc long at z ≈ 7 (radio jets reach 0.1–1 Mpc). */
+    /** Jets: ≈ 2.8 Mpc proper at z ≈ 7 — giant-radio-galaxy scale (most jets reach 0.1–1 Mpc, the largest ~5 Mpc). */
     jetLength: 1.5,
     jetWidth: 0.075,
     jetPeak: 1.0,
@@ -111,8 +116,8 @@ const params = {
     /** Starlight tint once the colour map has faded. */
     tint: [0.98, 0.9, 0.8] as [number, number, number],
     contrast: [
-      [0, 0.88],
-      [1, 1.1],
+      [0, 0.72],
+      [1, 1.05],
     ] as [number, number][],
     size: [
       [0, 0.55],
@@ -127,18 +132,6 @@ const params = {
     ] as [number, number][],
     stepFraction: 0.5,
   },
-};
-
-const ramp = (keys: [number, number][], x: number) => {
-  if (x <= keys[0]![0]) return keys[0]![1];
-  for (let i = 1; i < keys.length; i++) {
-    const [b, vb] = keys[i]!;
-    if (x <= b) {
-      const [a, va] = keys[i - 1]!;
-      return va + ((vb - va) * (x - a)) / (b - a);
-    }
-  }
-  return keys[keys.length - 1]![1];
 };
 
 export default (): CosmicScene => {
@@ -272,7 +265,7 @@ export default (): CosmicScene => {
 
       const fp = params.fog;
       const ha = lineColor(EMISSION_LINES_NM.hAlpha);
-      const hb = lineColor(EMISSION_LINES_NM.hBeta).multiplyScalar(1 / 2.86);
+      const hb = lineColor(EMISSION_LINES_NM.hBeta).multiplyScalar(1 / fp.balmerDecrement);
       const frontColour = uniform(ha.clone().add(hb));
       fog = new Mesh(
         new SphereGeometry(STRUCTURE.ballRadius, 48, 24),
@@ -382,8 +375,10 @@ export default (): CosmicScene => {
       }
       const fp = params.fog;
       const fogIn = smoothstep(0, fp.fadeIn, l);
-      uSigma.value = fp.sigmaMax * xHI * fogIn;
-      uFront.value = fp.front * smoothstep(0.04, 0.4, xHI) * fogIn;
+      // Neutral islands stay neutral (local x_HI ≈ 1) while the bubbles take the volume, so the haze density
+      // falls more gently than x_HI itself; the volume-averaged neutral column still follows x_HI.
+      uSigma.value = fp.sigmaMax * Math.pow(xHI, fp.densityExponent) * fogIn;
+      uFront.value = fp.front * smoothstep(0.015, 0.25, xHI) * fogIn;
       fog.visible = xHI > 0.01;
       self.colourMapped = xHI > 0.05 || cm > 0.5;
 

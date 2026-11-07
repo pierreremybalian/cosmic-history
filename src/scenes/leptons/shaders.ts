@@ -4,9 +4,10 @@
 //   pairs     — electrons (warm) and positrons (cool) jostling in the plasma; a pair exists while its rank is below
 //               the thermal pair abundance computed on the CPU (Fermi–Dirac, from the photon temperature).
 //   electrons — the excess: one per proton, always there, highlighted once the pairs are gone.
-//   nucleons  — the hadrons scene's survivors: gold protons and paler neutrons (share from abundances.ts).
+//   nucleons  — the hadrons scene's survivors: gold protons and cool neutral neutrons (share from abundances.ts);
+//               protons warm toward the bbn scene's proton colour by the end so the zoom hands over cleanly.
 
-import { Color } from 'three/webgpu';
+import { Color, Vector3 } from 'three/webgpu';
 import { abs, float, fract, mix, sin, smoothstep, uniform, vec3 } from 'three/tsl';
 import {
   abc,
@@ -19,6 +20,10 @@ import {
   rand3,
   strandPoint,
   wrapBox,
+  chargeColour,
+  ringOffset,
+  unitVec,
+  type Vec3U,
   type ColorU,
   type F,
   type FloatU,
@@ -53,6 +58,13 @@ export interface LeptonUniforms {
   neutron0: FloatU;
   /** Photon brightness: comoving photon energy density ∝ (T·a)⁴, normalised to its pre-annihilation value. */
   photon: FloatU;
+  /** Hero nucleon (instance 0): world position, visibility, neutron rank (sets when it decays), decay progress. */
+  heroPos: Vec3U;
+  heroVis: FloatU;
+  heroRank: FloatU;
+  decay: FloatU;
+  /** 0 → 1 over the chapter's end: proton colour moves toward the bbn scene's. */
+  handoff: FloatU;
 }
 
 export function createLeptonUniforms(): LeptonUniforms {
@@ -74,6 +86,11 @@ export function createLeptonUniforms(): LeptonUniforms {
     neutron: uniform(0.18),
     neutron0: uniform(0.18),
     photon: uniform(1),
+    heroPos: uniform(new Vector3()),
+    heroVis: uniform(0),
+    heroRank: uniform(0),
+    decay: uniform(0),
+    handoff: uniform(0),
   };
 }
 
@@ -100,6 +117,12 @@ export interface LeptonShape {
   nucleonCore: number;
   gold: readonly [number, number, number];
   neutronTint: readonly [number, number, number];
+  protonHandoff: readonly [number, number, number];
+  nucleonQuarkRadius: number;
+  nucleonQuarkWidth: number;
+  nucleonQuarkIntensity: number;
+  decayFlight: number;
+  colourCharge: readonly (readonly [number, number, number])[];
 }
 
 const v3 = (c: readonly [number, number, number]) => vec3(c[0], c[1], c[2]);
@@ -131,7 +154,7 @@ export function neutrinoLayer(s: LeptonShape, u: LeptonUniforms, view: ViewRig, 
   const speed = rand(strand, 6).mul(0.3).add(0.85).mul(s.c / s.neutrinoLength).mul(v);
   const arc = fract(rand(i, 7).add(u.clockC.mul(speed)));
   const headU = neutrinoPoint(x0, arc, f, d);
-  const tailU = neutrinoPoint(x0, arc.sub(u.trailC.mul(speed).mul(1.4)).max(0), f, d);
+  const tailU = neutrinoPoint(x0, arc.sub(u.trailC.mul(speed).mul(0.8)).max(0), f, d);
   const head = wrapBox(headU, view.centre, box);
   const tail = head.sub(headU.sub(tailU));
   const ends = sin(arc.mul(Math.PI)).sqrt();
@@ -146,7 +169,6 @@ export function pairLayer(s: LeptonShape, u: LeptonUniforms, view: ViewRig, gain
   const pair = i.shiftRight(1) as U;
   const positron = i.bitAnd(1).toFloat();
   const base = rand3(i, 0).mul(box);
-  const f = flowOf(s, u, 1);
   // Scattering in the plasma: swirl with the flow plus a fast jostle.
   const pos = (t: F): V3 => {
     const ph = t.mul(0.35);
@@ -187,27 +209,62 @@ export function excessLayer(s: LeptonShape, u: LeptonUniforms, view: ViewRig, ga
   return { head, tail, width, color: v3(s.electronTint).mul(intensity), tailGlow: 0.2 };
 }
 
-/** Two sprites per nucleon: a soft glow (part 0) and a hot core (part 1). */
-export const NUCLEON_PARTS = 2;
+/**
+ * Seven sprites per nucleon: soft glow, hot core, three quarks (colour charge, as in the hadrons scene) and, for
+ * the hero only, the electron and antineutrino of its β decay.
+ */
+export const NUCLEON_PARTS = 7;
 
 export function nucleonLayer(s: LeptonShape, u: LeptonUniforms, view: ViewRig, gain: number): StreakSpec {
   const i = iid();
   const box = view.box;
   const n = i.div(NUCLEON_PARTS) as U;
-  const core = i.sub(n.mul(NUCLEON_PARTS)).toFloat();
+  const part = i.sub(n.mul(NUCLEON_PARTS)).toFloat();
+  const hero = float(1).sub(smoothstep(0.25, 0.5, n.toFloat()));
   const base = rand3(n, 50).mul(box);
   const ph = u.clockM.mul(0.2);
-  const headU = base.add(abc(base.mul(s.flowK * 0.7).add(vec3(ph, ph.mul(0.7), ph.mul(-0.5)))).mul(0.35));
-  const head = wrapBox(headU, view.centre, box);
-  const rank = rand(n, 51);
+  const roam = base.add(abc(base.mul(s.flowK * 0.7).add(vec3(ph, ph.mul(0.7), ph.mul(-0.5)))).mul(0.35));
+  const centreU = mix(roam, u.heroPos, hero);
+  const rank = mix(rand(n, 51), u.heroRank, hero);
   // Which nucleons are neutrons now; those above the current share but below the starting share have decayed.
   const isNeutron = smoothstep(0, 1e-4, u.neutron.sub(rank));
   const decayed = smoothstep(0, 1e-4, u.neutron0.sub(rank)).mul(float(1).sub(isNeutron));
-  const col = mix(v3(s.gold), v3(s.neutronTint), isNeutron);
+  // Protons hand over from the survivors' gold to the warm proton colour of the nucleosynthesis scene.
+  const col = mix(mix(v3(s.gold), v3(s.protonHandoff), u.handoff), v3(s.neutronTint), isNeutron);
   const pulse = sin(u.clockC.mul(0.7).add(rank.mul(40))).mul(0.08).add(1);
-  const coreK = mix(float(1), float(s.nucleonCore), core);
-  const width = mix(float(s.nucleonWidth), float(s.nucleonWidth * 0.22), core);
-  const sparkle = decayed.mul(abs(sin(u.clockC.mul(3).add(rank.mul(17)))).pow(8)).mul(0.6);
-  const intensity = float(s.nucleonIntensity * gain).mul(boxFade(head, view.centre, box)).mul(pulse).mul(coreK).mul(float(1).add(sparkle));
-  return { head, tail: head, width, color: col.mul(intensity), tailGlow: 1 };
+
+  const isGlow = float(1).sub(smoothstep(0.5, 0.6, part));
+  const isCore = smoothstep(0.5, 0.6, part).mul(float(1).sub(smoothstep(1.5, 1.6, part)));
+  const isQuark = smoothstep(1.5, 1.6, part).mul(float(1).sub(smoothstep(4.5, 4.6, part)));
+  const isLepton = smoothstep(4.5, 4.6, part);
+  const k = part.sub(2).clamp(0, 2);
+  // Quarks: a slow spinning triangle inside the glow.
+  const axis = unitVec(rand(n, 52), rand(n, 53));
+  const ring = ringOffset(axis, u.clockC.mul(0.25), s.nucleonQuarkRadius, 1, k.mul(Math.PI * 2 / 3));
+  // β decay of the hero: the electron (warm) and antineutrino (lilac) fly apart over the decay window.
+  const isNu = smoothstep(5.5, 5.6, part);
+  const dir = mix(unitVec(float(0.62), float(0.12)), unitVec(float(0.35), float(0.64)), isNu);
+  const flight = u.decay.mul(s.decayFlight);
+  const leptonPos = dir.mul(flight);
+  const offset = ring.mul(isQuark).add(leptonPos.mul(isLepton));
+  const headU = centreU.add(offset);
+  const head = wrapBox(headU, view.centre, box);
+  const tail = head.sub(dir.mul(isLepton).mul(flight.min(0.12)));
+
+  const qCol = chargeColour(k, s.colourCharge);
+  const leptonCol = mix(v3(s.electronTint), v3(s.neutrinoTint), isNu).mul(3);
+  const leptonVis = isLepton.mul(hero).mul(smoothstep(0, 0.05, u.decay)).mul(float(1).sub(smoothstep(0.7, 1, u.decay)));
+  const colour = col
+    .mul(isGlow.add(isCore.mul(s.nucleonCore)))
+    .add(qCol.mul(isQuark.mul(s.nucleonQuarkIntensity)))
+    .add(leptonCol.mul(leptonVis));
+  const width = float(s.nucleonWidth)
+    .mul(isGlow)
+    .add(float(s.nucleonWidth * 0.22).mul(isCore))
+    .add(float(s.nucleonQuarkWidth).mul(isQuark))
+    .add(float(0.008).mul(isLepton));
+  const sparkle = decayed.mul(float(1).sub(hero)).mul(abs(sin(u.clockC.mul(3).add(rank.mul(17)))).pow(8)).mul(0.6);
+  const vis = mix(float(1), u.heroVis, hero).mul(boxFade(head, view.centre, box));
+  const intensity = float(s.nucleonIntensity * gain).mul(vis).mul(pulse).mul(float(1).add(sparkle));
+  return { head, tail, width, color: colour.mul(intensity), tailGlow: 0.2 };
 }

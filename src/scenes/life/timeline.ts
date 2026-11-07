@@ -202,7 +202,7 @@ export const params = {
   ] as const,
   /** Cloud cover. */
   cloudCover: [
-    [4400, 0.85],
+    [4400, 0.62],
     [3800, 0.62],
     [2440, 0.6],
     [2300, 0.35],
@@ -306,4 +306,5 @@ export function northIceSheet(Lmyr: number): number {
   return early + (edge - early) * w;
 }
 
-export const ARCHEAN_HAZE: AtmosphereSpec['haze'] = [2.0e-5, 4.0e-5, 8.6e-5];
+/** Organic haze extinction at peak (1/m at the base): strongly blue-absorbing, like Titan's (Arney et al. 2016). */
+export const ARCHEAN_HAZE: AtmosphereSpec['haze'] = [4.0e-5, 9.0e-5, 2.2e-4];

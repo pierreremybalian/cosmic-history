@@ -24,6 +24,8 @@ export interface PointsOptions {
   shade?: (pos: Node<'vec4'>, col: Node<'vec4'>) => { color: Node<'vec3'>; size?: Node<'float'> };
   /** Gaussian core sharpness. */
   sharpness?: number;
+  /** 'ring' draws a thin circle (markers) instead of a soft disc. */
+  shape?: 'disc' | 'ring';
 }
 
 export function createPoints(o: PointsOptions): Points {
@@ -40,7 +42,10 @@ export function createPoints(o: PointsOptions): Points {
   mat.scaleNode = px.mul(2 * tanHalf).div(o.resolution.y);
   const d = uv().sub(0.5).length().mul(2);
   const k = o.sharpness ?? 6;
-  const disc = exp(d.mul(d).mul(-k)).mul(float(1).sub(smoothstep(0.75, 1.0, d)));
+  const disc =
+    o.shape === 'ring'
+      ? exp(d.sub(0.78).div(0.07).pow(2).negate())
+      : exp(d.mul(d).mul(-k)).mul(float(1).sub(smoothstep(0.75, 1.0, d)));
   mat.colorNode = shaded.color.mul(u.opacity);
   mat.opacityNode = disc;
   const sprite = new Sprite(mat);

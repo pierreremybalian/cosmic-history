@@ -10,7 +10,8 @@
 import { blackbodyRGB } from '../../physics/blackbody.ts';
 import { globalsAt, type Globals } from '../../physics/cosmology.ts';
 import { smoothstep } from '../../shared/math.ts';
-import { PerspectiveCamera, Scene, type RenderTarget, type WebGPURenderer } from 'three/webgpu';
+import { PerspectiveCamera, Scene, Vector3, type RenderTarget, type WebGPURenderer } from 'three/webgpu';
+import { mix, smoothstep as tslSmoothstep, texture3D } from 'three/tsl';
 import type { CosmicScene, RenderContext } from '../types.ts';
 import { sceneRange } from '../sceneRange.ts';
 import {
@@ -21,6 +22,9 @@ import {
   createViewRig,
   currents,
   devTune,
+  findSlot,
+  pinHero,
+  randCPU,
   localOf,
   SLOT,
   tierGain,
@@ -37,20 +41,22 @@ export const params = {
   /** Wrap-box centre ahead of the camera, as a fraction of the box. */
   boxAhead: 0.3,
   fov: 52,
-  focus: 2.6,
-  aperture: 0.008,
-  maxBlur: 0.04,
+  focus: 1.85,
+  aperture: 0.025,
+  maxBlur: 0.07,
   minPx: 1.1,
-  near: 0.7,
+  near: 0.45,
   fog: 3.6,
   /** Share of ctx.quality.particles per layer. */
   share: { quarks: 0.11, bath: 0.3, glitter: 0.55, gluons: 0.04 },
   bathSteps: { low: 8, medium: 14, high: 18 } as Record<string, number>,
   bathLength: 11,
-  bathIntensity: 0.22,
+  bathIntensity: 0.45,
   bathFloor: 0.02,
+  /** World size of the primordial-field tile used for the reheating ripples. */
+  rippleScale: 9,
   /** Hot currents shared by the glow and the particles. */
-  currents: { scale: 0.35, sharp: 3, voids: 0.95, floor: 0.15 },
+  currents: { scale: 0.5, sharp: 5, voids: 0.95, floor: 0.15 },
   /** Flow morph rate (per massive-clock second). */
   morphRate: 0.03,
   /** Wall-clock length of a motion trail (s): bath strands, quarks. */
@@ -63,14 +69,20 @@ export const params = {
     /** Higgs crossover time, s (local computed from the chapter map). */
     higgsT: 1e-12,
     higgsHalfWidth: 0.018,
-    split: 0.83,
-    splitHalfWidth: 0.035,
+    /** Flash peaks just before the 0.83 caption so the text lands as it fades. */
+    split: 0.82,
+    splitHalfWidth: 0.026,
     pairStart: 0.855,
     pairEnd: 0.95,
-    goldStart: 0.875,
-    goldEnd: 0.945,
+    goldStart: 0.86,
+    goldEnd: 0.93,
     calm: 0.95,
   },
+  /** Foreground slots pinned near the camera: offset in the camera frame, visibility window. */
+  heroes: [
+    { offset: [0.42, -0.12, -1.8] as const, from: 0.1, to: 0.2 },
+    { offset: [-0.45, 0.14, -1.9] as const, from: 0.83, to: 0.9 },
+  ],
   camera: {
     /** Forward travel over the whole chapter (world units). */
     travel: 7,
@@ -89,15 +101,15 @@ export const params = {
     photonShare: 0.3,
     slotStrandLength: 6,
     slotSpacing: 0.09,
-    wobble: 0.025,
+    wobble: 0.04,
     pairRadius: 0.022,
     pairSpin: 2.4,
     /** Excess-matter slots: 1 in 50 (real: ~1 in a billion). */
     extraFrac: 1 / 50,
     quarkWidth: 0.02,
-    quarkIntensity: 2.5,
+    quarkIntensity: 3.5,
     gluonWidth: 0.008,
-    gluonIntensity: 9.0,
+    gluonIntensity: 14.0,
     gluonPeriod: 0.9,
     gluonLag: 0.35,
     gold: [1.0, 0.68, 0.26],
@@ -107,8 +119,9 @@ export const params = {
       [0.16, 0.36, 1.0],
     ],
     rippleScale: 0.9,
+    heroGluons: 4,
     glitterWidth: 0.004,
-    glitterIntensity: 1.2,
+    glitterIntensity: 2.2,
     glitterDrift: 0.5,
   } satisfies QgpShape as QgpShape,
 };
@@ -127,6 +140,7 @@ export default (): CosmicScene => {
   const clockC = new Clock();
   let height = 720;
   const rgb: [number, number, number] = [0, 0, 0];
+  const base = new Vector3();
 
   return {
     id: 'qgp',
@@ -149,6 +163,10 @@ export default (): CosmicScene => {
       view.near.value = params.near;
       view.fog.value = params.fog;
       u = createQgpUniforms();
+      // Hero slots: an ordinary slot revealed early, and an excess-matter slot (CPU twin of the GPU seeds).
+      const ef = params.shape.extraFrac;
+      u.heroes[0]!.id.value = findSlot((s) => randCPU(s, 0) >= ef && randCPU(s, 16) < 0.01, 7);
+      u.heroes[1]!.id.value = findSlot((s) => randCPU(s, 0) < ef && randCPU(s, 16) < 0.01, 7);
 
       const n = ctx.quality.particles;
       const gain = tierGain(n);
@@ -165,7 +183,13 @@ export default (): CosmicScene => {
       bath = createBath(ctx, {
         steps: params.bathSteps[ctx.quality.name] ?? 10,
         length: params.bathLength,
-        density: (p) => currents(p, u.clockM, u.curScale, u.curSharp, u.curVoids),
+        // The soup's glow; at reheating it still carries the primordial ripples inflation left (same field).
+        density: (p) =>
+          mix(
+            currents(p, u.clockM, u.curScale, u.curSharp, u.curVoids),
+            tslSmoothstep(-1.2, 2.2, texture3D(density, p.div(params.rippleScale)).b),
+            u.ripple,
+          ),
       });
       bath.uniforms.floor.value = params.bathFloor;
       bath.uniforms.fog.value = params.fog * 1.6;
@@ -208,7 +232,12 @@ export default (): CosmicScene => {
       blackbodyRGB(g.T, rgb);
       u.thermal.value.setRGB(rgb[0], rgb[1], rgb[2]);
 
-      bath.uniforms.intensity.value = params.bathIntensity * u.bright.value * (1 + 2.2 * u.flash.value) * (1 - 0.3 * u.gold.value);
+      // The haze thins as the soup cools and clears further once particles are massive (it never quite goes).
+      const cooling = (1 - 0.45 * smoothstep(0.2, 0.75, local)) * (1 - 0.35 * higgs);
+      bath.uniforms.intensity.value =
+        params.bathIntensity * (0.4 + 0.6 * fill) * cooling * (1 + 10 * u.flash.value) * (1 - 0.5 * u.gold.value);
+      // The electroweak flash runs white-hot (tint lifts red/green over the saturated blue blackbody).
+      bath.uniforms.tint.value.setRGB(1 + 1.6 * u.flash.value, 1 + 0.9 * u.flash.value, 1);
 
       // Camera: slow push through the soup; drift rides the massive clock so it, too, gains inertia.
       const c = params.camera;
@@ -224,6 +253,8 @@ export default (): CosmicScene => {
       );
       camera.rotateZ(0.04 * Math.sin(tC * 0.017 + local));
       camera.updateMatrixWorld();
+      base.set(0, 0, z);
+      params.heroes.forEach((h, k) => pinHero(u.heroes[k]!, camera, base, h.offset, tC, k * 2.1, smoothstep(h.from, h.to, local)));
       updateViewRig(view, camera, height, params.boxAhead);
       bath.mesh.position.copy(camera.position);
     },

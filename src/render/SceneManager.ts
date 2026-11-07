@@ -38,6 +38,10 @@ export class SceneManager {
   private height = 1;
   private dpr = 1;
   private disposed = false;
+  private syncIndex = -1;
+  private syncSince = 0;
+  private readonly keep = new Set<string>();
+  private readonly drop: string[] = [];
   constructor(private readonly ctx: RenderContext) {}
 
   setContext(patch: Partial<RenderContext>): void {
@@ -120,21 +124,35 @@ export class SceneManager {
    * Keep {previous, active, next} chapter scenes. Preload next when local > 0.6 (forward), previous when
    * local < 0.4 (backward). The previous scene is also needed for the incoming transition.
    */
-  sync(chapterIndex: number, local: number, direction: number): void {
+  sync(chapterIndex: number, local: number, direction: number, nowS = performance.now() / 1000): void {
     const cur = CHAPTERS[chapterIndex]!;
     const prev = CHAPTERS[chapterIndex - 1];
     const next = CHAPTERS[chapterIndex + 1];
-    const keep = new Set<string>([cur.sceneId]);
-    this.load(cur.sceneId);
-    if (prev && (local < cur.transitionSpan || (direction < 0 && local < 0.4) || this.entries.has(prev.sceneId))) {
+    // Dwell: during a fast flight (a nav jump across many chapters) do not initialise every scene we pass.
+    if (chapterIndex !== this.syncIndex) {
+      this.syncIndex = chapterIndex;
+      this.syncSince = nowS;
+    }
+    const settled = nowS - this.syncSince > 0.15 || this.entries.has(cur.sceneId);
+    const keep = this.keep;
+    keep.clear();
+    keep.add(cur.sceneId);
+    if (settled) this.load(cur.sceneId);
+    const wantPrev = local < cur.transitionSpan || (direction < 0 && local < 0.4);
+    if (prev && (wantPrev || this.entries.has(prev.sceneId))) {
       keep.add(prev.sceneId);
-      if (local < cur.transitionSpan || (direction < 0 && local < 0.4)) this.load(prev.sceneId);
+      if (wantPrev && settled) this.load(prev.sceneId);
     }
-    if (next && ((direction >= 0 && local > 0.6) || this.entries.has(next.sceneId))) {
+    const wantNext = direction >= 0 && local > 0.6;
+    if (next && (wantNext || this.entries.has(next.sceneId))) {
       keep.add(next.sceneId);
-      if (direction >= 0 && local > 0.6) this.load(next.sceneId);
+      if (wantNext && settled) this.load(next.sceneId);
     }
-    for (const id of [...this.entries.keys()]) if (!keep.has(id)) this.unload(id);
+    if (this.entries.size > keep.size) {
+      this.drop.length = 0;
+      for (const id of this.entries.keys()) if (!keep.has(id)) this.drop.push(id);
+      for (const id of this.drop) this.unload(id);
+    }
   }
 
   /** Single-scene mode (dev route): keep only this one. */

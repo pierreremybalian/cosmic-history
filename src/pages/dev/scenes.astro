@@ -1,6 +1,6 @@
 ---
 // Scene smoke test (HANDOFF §15): pick a scene, scrub local, FPS + GPU memory, load/unload ×50 leak check.
-// URL params: ?scene=<id>&local=0.5&tier=low|medium|high&webgl=1&paused=1&ui=0
+// URL params: ?scene=<id>&local=0.5&chapter=<chapterId>&tier=low|medium|high&webgl=1&paused=1&ui=0
 import Base from '../../layouts/Base.astro';
 import { SCENES } from '../../scenes/registry.ts';
 const ids = Object.keys(SCENES);
@@ -51,9 +51,10 @@ const ids = Object.keys(SCENES);
   const w = window as unknown as Record<string, unknown>;
   w.__ready = false;
 
+  const chapterId = params.get('chapter') ?? undefined;
   const engine = await createEngine({
     canvas,
-    single: { sceneId: sel.value, local: Number(slider.value), paused: paused.checked },
+    single: { sceneId: sel.value, local: Number(slider.value), paused: paused.checked, chapterId },
     skipProbe: true,
     tier: (params.get('tier') as 'low' | 'medium' | 'high' | null) ?? 'medium',
   });
@@ -64,7 +65,7 @@ const ids = Object.keys(SCENES);
   } else {
     const apply = () => {
       out.value = Number(slider.value).toFixed(3);
-      engine.setSingle({ sceneId: sel.value, local: Number(slider.value), paused: paused.checked });
+      engine.setSingle({ sceneId: sel.value, local: Number(slider.value), paused: paused.checked, chapterId });
       const u = new URL(location.href);
       u.searchParams.set('scene', sel.value);
       u.searchParams.set('local', slider.value);
@@ -122,9 +123,10 @@ const ids = Object.keys(SCENES);
         const m = (engine.renderer.info as unknown as { memory: { geometries: number; textures: number } }).memory;
         return { geometries: m.geometries, textures: m.textures };
       };
-      engine.setSingle(null);
-      await new Promise((r) => setTimeout(r, 100));
-      engine.manager.disposeAll();
+      // Park the engine on the placeholder so page mode does not reload a chapter scene mid-test.
+      engine.setSingle({ sceneId: '_placeholder', local: 0.5, paused: true });
+      await new Promise((r) => setTimeout(r, 300));
+      engine.manager.unload(id);
       await new Promise((r) => requestAnimationFrame(r));
       // Warm-up cycles first: shared, lazily created resources (sprite quad, field textures) are allocated once.
       let before = mem();

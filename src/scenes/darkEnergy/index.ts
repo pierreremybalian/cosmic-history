@@ -25,6 +25,7 @@ import {
   createGalaxyImpostors,
   createSpiralGalaxy,
   monotoneTrack,
+  MW_ARM_START,
   mwSway,
   MW_FRAME,
   peakWorld,
@@ -41,13 +42,13 @@ import { createExpansionRings, createTrails, type ExpansionRings, type Trails } 
 const params = {
   fov: 40,
   web: {
-    brightness: 0.09,
+    brightness: 0.075,
     contrast: 1.35,
     /** Fraction of web particles shown, densest first (hides the diffuse void population). */
-    reveal: 0.55,
+    reveal: 0.45,
     tint: new Color(0.72, 0.8, 1.0),
     /** Outer tiles draw this fraction of the particles. */
-    outerFraction: 0.25,
+    outerFraction: 0.18,
     /** Round patch of universe: visible inside r0, gone by r1 (world, comoving at chapter start). */
     sphere: [5.0, 8.5] as const,
   },
@@ -129,7 +130,7 @@ export default (): CosmicScene => {
     range: RANGE,
     accuracy: 'measured',
     accuracyNote:
-      'Distances stretch by the measured expansion a(t) (Planck 2018 ΛCDM); rings mark the size of one sphere of galaxies every billion years, dashed beyond this chapter as the forecast; galaxies are drawn ~40× larger than true scale and bound clusters do not expand.',
+      'Distances stretch by the measured a(t); rings and dot trails mark one sphere of galaxies per Gyr (violet: ΛCDM forecast); galaxies drawn ~40× too large.',
     colourMapped: false,
 
     async init(ctx: RenderContext) {
@@ -164,7 +165,7 @@ export default (): CosmicScene => {
       galTiles = tileBox(galaxies.material, galaxies.count, nPeaksAndComp + Math.round(params.galaxies.field[tier] * params.galaxies.outerFraction));
       scene.add(galTiles.group);
 
-      mw = createSpiralGalaxy({ stars: params.milkyWay.stars[tier], seed: 2024, armSeed: 0.15 });
+      mw = createSpiralGalaxy({ stars: params.milkyWay.stars[tier], seed: 2024, armSeed: 0.15, armStart: MW_ARM_START });
       mw.uniforms.glow.value = params.milkyWay.glow;
       mw.uniforms.bar.value = params.milkyWay.bar;
       mw.uniforms.settle.value = 1;
@@ -216,7 +217,7 @@ export default (): CosmicScene => {
       peakWorld(ctxRef.field, mwPeak, A, mwPos);
       web.uniforms.amplitude.value = A;
       web.uniforms.scale.value = s;
-      webTiles.place(mwPos, s);
+      webTiles.place(mwPos, s, undefined, mwPos, params.web.sphere[1] * s);
       const G = galaxies.uniforms;
       G.amplitude.value = A;
       G.scale.value = s;
@@ -224,7 +225,7 @@ export default (): CosmicScene => {
       G.maturity.value = 0.95 + 0.05 * local;
       G.mergeClock.value = 2;
       G.spin.value = spin;
-      galTiles.place(mwPos, s);
+      galTiles.place(mwPos, s, undefined, mwPos, params.web.sphere[1] * s);
       sphereCenter.value.copy(mwPos);
       sphere0.value = params.web.sphere[0] * s;
       sphere1.value = params.web.sphere[1] * s;
@@ -238,7 +239,8 @@ export default (): CosmicScene => {
       const tFront = tNowGyr + (params.rings.tMaxGyr - tNowGyr) * fc;
       const rFront = (params.rings.rRef * aAt(tFront * GYR_S)) / a0;
       const halfTan = Math.tan(((params.fov / 2) * Math.PI) / 180);
-      const D = Math.max(Math.pow(10, logD(local)), rFront / (halfTan * params.rings.frontFrame));
+      const chase = fc > 0 ? rFront / (halfTan * params.rings.frontFrame) : 0;
+      const D = Math.max(Math.pow(10, logD(local)), chase);
       startDir.copy(MW_FRAME.view).applyAxisAngle(yAxis, mwSway(elapsed));
       const turn = smootherstep(params.camera.turn[0], params.camera.turn[1], local);
       dir.copy(startDir).lerp(endDir, turn).normalize();

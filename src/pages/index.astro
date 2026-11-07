@@ -198,10 +198,13 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
 <style>
   :global(html.clean .rail),
   :global(html.clean .hud),
-  :global(html.clean .story),
-  :global(html.clean .credits),
   :global(html.clean-1 .hero) {
     display: none !important;
+  }
+  /* The story keeps its height (it defines the scroll length); only its text is hidden. */
+  :global(html.clean .story),
+  :global(html.clean .credits) {
+    visibility: hidden !important;
   }
   :global(html.clean .cosmos .veil) {
     display: none;

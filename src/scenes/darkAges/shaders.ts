@@ -1,7 +1,7 @@
 // TSL for the dark ages: the fading afterglow sky and the ?debug=field overlay (shared materials: structure.ts).
 
 import { AdditiveBlending, BackSide, DoubleSide, MeshBasicNodeMaterial, SpriteNodeMaterial, type DataTexture, type Data3DTexture } from 'three/webgpu';
-import { float, instanceIndex, positionLocal, smoothstep, texture3D, vec3, vec4 } from 'three/tsl';
+import { float, instanceIndex, positionLocal, positionWorld, smoothstep, texture3D, vec3, vec4 } from 'three/tsl';
 import type { UniformArrayNode } from 'three/webgpu';
 import { blackbodyNode } from '../../render/globals.ts';
 import { cmbColorNode } from '../../shared/color.ts';
@@ -37,15 +37,14 @@ export function markerMaterial(seeds: UniformArrayNode<'vec4'>, size: number): S
 }
 
 /**
- * ?debug=field: a horizontal slice through the focus showing the primordial field (Lagrangian coordinates):
+ * ?debug=field: a horizontal slice through the highest peak showing the primordial field (Lagrangian coordinates):
  * channel 'b' = smoothed δ/σ (the field the halo peaks are found in), 'g' = ζ (the inflation ripples).
  * `shift` is the world re-centring, so world → box uvw = (world − shift)/BOX + 0.5 (texture repeat-wraps).
  */
 export function sliceMaterial(density: Data3DTexture, shift: { x: number; y: number; z: number }, channel: 'b' | 'g', radius: number): MeshBasicNodeMaterial {
   const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: DoubleSide });
-  const p = positionLocal; // plane in XY, rotated to XZ by the mesh
-  const world = vec3(p.x, 0, p.y.negate());
-  const uvw = world.sub(vec3(shift.x, shift.y, shift.z)).div(WORLD_BOX).add(0.5);
+  const p = positionLocal; // plane in XY; the mesh places it (horizontal, through the top peak)
+  const uvw = positionWorld.sub(vec3(shift.x, shift.y, shift.z)).div(WORLD_BOX).add(0.5);
   const sample = texture3D(density, uvw);
   const v = channel === 'b' ? sample.b : sample.g;
   const disc = float(1).sub(smoothstep(radius * 0.9, radius, p.xy.length()));

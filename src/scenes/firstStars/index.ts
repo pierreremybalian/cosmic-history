@@ -22,6 +22,7 @@ import {
   createStructureWeb,
   fieldNodes,
   focusShift,
+  ramp,
   haloMaterial,
   hazeMaterial,
   type StructureWeb,
@@ -37,7 +38,7 @@ const params = {
      * Fraction that explode: 140–260 M☉ (pair-instability) and < 40 M☉ stars do; 40–140 M☉ collapse straight
      * into black holes (Heger & Woosley 2002, ApJ 567, 532). The earliest one always explodes for beat 0.5.
      */
-    explodeFraction: 0.6,
+    explodeFraction: 0.5,
     /** Ignition in order of peak height, chapter-local (beat 0.24: "the first stars ignite"). */
     igniteStart: 0.19,
     igniteEnd: 0.37,
@@ -62,7 +63,7 @@ const params = {
     tempK: 1.0e5,
     size: 0.42,
     peak: 7,
-    flash: 14,
+    flash: 9,
     flashTau: 0.016,
   },
   gas: {
@@ -98,7 +99,7 @@ const params = {
   shell: {
     /** World radius at the end (≈ 280 kpc vs ~1–2 kpc real for a Pop III supernova remnant). */
     rMax: 0.3,
-    duration: 0.3,
+    duration: 0.24,
     /** Sedov–Taylor blast wave R ∝ t^(2/5) (Sedov 1959; Taylor 1950). */
     sedovExponent: 0.4,
     peak: 1.3,
@@ -106,8 +107,8 @@ const params = {
     ejectaDivisor: 2000,
     ejectaMin: 48,
     ejectaMax: 240,
-    ejectaSize: 0.014,
-    ejectaPeak: 1.6,
+    ejectaSize: 0.013,
+    ejectaPeak: 1.2,
     /** Shocked gas starts hot: blackbody at ~3×10⁴ K for the flash colour. */
     hotTempK: 3.0e4,
   },
@@ -127,7 +128,7 @@ const params = {
       [0.4, 0.3],
       [1, 0.26],
     ] as [number, number][],
-    contrast: 0.88,
+    contrast: 0.72,
     size: 0.55,
   },
   haze: {
@@ -147,18 +148,6 @@ const params = {
     /** Halos without a star in view dim as the camera closes in (they are the backdrop now). */
     backdrop: 0.3,
   },
-};
-
-const ramp = (keys: [number, number][], x: number) => {
-  if (x <= keys[0]![0]) return keys[0]![1];
-  for (let i = 1; i < keys.length; i++) {
-    const [b, vb] = keys[i]!;
-    if (x <= b) {
-      const [a, va] = keys[i - 1]!;
-      return va + ((vb - va) * (x - a)) / (b - a);
-    }
-  }
-  return keys[keys.length - 1]![1];
 };
 
 export default (): CosmicScene => {
@@ -194,7 +183,7 @@ export default (): CosmicScene => {
     range: sceneRange('firstStars'),
     accuracy: 'modelled',
     accuracyNote:
-      'Population III stars (blackbody ≈ 100,000 K) ignite in the densest halos of the same simulated web, but only the ~30 highest peaks in view are shown, their few-million-year lives are stretched ~30×, nebulae and blast shells are drawn ~50–200× larger than life, dark matter and gas are colour mapped, and the nebula colours are the real emission lines at rest (in reality redshifted into the infrared).',
+      'Population III stars (blackbody ≈ 100,000 K) ignite in the densest halos of the same simulated web, but only the 18 highest peaks in view host them, their few-million-year lives are stretched ~30×, nebulae and blast shells are drawn ~50–200× larger than life, dark matter and gas are colour mapped, and the nebula colours are the real emission lines at rest (in reality redshifted into the infrared).',
     colourMapped: true,
 
     async init(ctx: RenderContext) {

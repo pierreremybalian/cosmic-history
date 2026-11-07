@@ -47,10 +47,10 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
 
   // Sun: a disc at its true angular size plus a glow that keeps it a star from afar.
   const sun = createPoints({
-    count: 2,
+    count: 3,
     resolution,
     fovDeg,
-    sharpness: 3.5,
+    sharpness: 9,
     shade: (P, C) => {
       // P.w > 0: fixed pixel size; P.w < 0: true size in AU (projected).
       const viewZ = modelViewMatrix.mul(vec4(P.xyz, 1)).z.negate();
@@ -59,10 +59,13 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
       return { color: C.rgb.mul(C.w).mul(u.sun), size };
     },
   });
-  sun.pos.setXYZW(0, 0, 0, 0, 70);
-  sun.col.setXYZW(0, sunColor.x, sunColor.y, sunColor.z, 0.35);
-  sun.pos.setXYZW(1, 0, 0, 0, -SUN_RADIUS_AU);
-  sun.col.setXYZW(1, sunColor.x, sunColor.y, sunColor.z, 6.0);
+  // wide faint halo, tight glow, and the photosphere at true size (≥ 2.5 px)
+  sun.pos.setXYZW(0, 0, 0, 0, 160);
+  sun.col.setXYZW(0, sunColor.x, sunColor.y, sunColor.z, 0.05);
+  sun.pos.setXYZW(1, 0, 0, 0, 26);
+  sun.col.setXYZW(1, sunColor.x, sunColor.y, sunColor.z, 0.9);
+  sun.pos.setXYZW(2, 0, 0, 0, -SUN_RADIUS_AU);
+  sun.col.setXYZW(2, sunColor.x, sunColor.y, sunColor.z, 8.0);
   group.add(sun.sprite);
 
   // Planets: dots at today's positions.
@@ -78,8 +81,8 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
     eclToWorld(tmp.x, tmp.y, tmp.z, tmp);
     if (i === earthIndex) earthPos.copy(tmp);
     const big = p.name === 'Jupiter' || p.name === 'Saturn';
-    planets.pos.setXYZW(i, tmp.x, tmp.y, tmp.z, big ? 4.2 : 3.2);
-    planets.col.setXYZW(i, p.color[0] * 1.6, p.color[1] * 1.6, p.color[2] * 1.6, i === earthIndex ? 1 : 0);
+    planets.pos.setXYZW(i, tmp.x, tmp.y, tmp.z, big ? 6.5 : 5.0);
+    planets.col.setXYZW(i, p.color[0] * 2.2, p.color[1] * 2.2, p.color[2] * 2.2, i === earthIndex ? 1 : 0);
   });
   group.add(planets.sprite);
 
@@ -111,11 +114,10 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
   orbits.frustumCulled = false;
   group.add(orbits);
 
-  // Asteroid belt (2.1–3.3 AU), Kuiper belt (30–50 AU) and a hint of the Oort cloud (2,000–50,000 AU).
+  // Asteroid belt (2.1–3.3 AU), Kuiper belt (30–50 AU) and, with the rest, a hint of the Oort cloud (2,000–50,000 AU).
   const rand = mulberry32(77);
   const nA = Math.round(beltCount * 0.35);
   const nK = Math.round(beltCount * 0.4);
-  const nO = beltCount - nA - nK;
   const belts = createPoints({ count: beltCount, resolution, fovDeg, sharpness: 4 });
   for (let k = 0; k < beltCount; k++) {
     let x: number;
@@ -130,7 +132,7 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
       x = a * Math.cos(th);
       y = a * Math.sin(th) * Math.cos(inc);
       z = a * Math.sin(th) * Math.sin(inc);
-      br = ast ? 0.32 : 0.22;
+      br = ast ? 0.1 : 0.09;
     } else {
       const r = 2000 * Math.pow(25, rand());
       const v = new Vector3(gaussian(rand), gaussian(rand), gaussian(rand)).normalize().multiplyScalar(r);
@@ -140,7 +142,7 @@ export function createSolarSystem(T: number, resolution: Vec2Uniform, fovDeg: nu
       br = 0.25;
     }
     eclToWorld(x, y, z, tmp);
-    belts.pos.setXYZW(k, tmp.x, tmp.y, tmp.z, 1.6);
+    belts.pos.setXYZW(k, tmp.x, tmp.y, tmp.z, 1.3);
     belts.col.setXYZW(k, 0.75 * br, 0.72 * br, 0.68 * br, 1);
   }
   group.add(belts.sprite);
@@ -198,20 +200,27 @@ export function createNeighbourhood(count: number, resolution: Vec2Uniform, fovD
     shade: (P, C) => {
       const d2 = max(cameraPosition.sub(P.xyz).dot(cameraPosition.sub(P.xyz)), 1e-6);
       const flux = C.w.div(d2); // L☉ / pc²
-      const b = min(pow(flux.mul(40.0), 0.42), 4.0);
+      const b = min(pow(flux.mul(2500.0), 0.42), 4.0);
       const fade = smoothstep(0.004, 0.03, b);
       return { color: C.rgb.mul(b).mul(fade).mul(u.stars), size: float(1.4).add(sqrt(b).mul(1.3)) };
     },
   });
+  // The Sun itself (index 0): it stays a star at the centre while we leave the solar system.
+  stars.pos.setXYZW(0, 0, 0, 0, 2);
+  {
+    const [sr, sg, sb] = blackbodyRGB(5772);
+    stars.col.setXYZW(0, sr, sg, sb, 1);
+  }
   const cdf: number[] = [];
   let acc = 0;
   for (const c of CLASSES) cdf.push((acc += c.f));
   const tmp = new Vector3();
-  for (let k = 0; k < count; k++) {
+  for (let k = 1; k < count; k++) {
     const x = rand() * acc;
     const c = CLASSES[cdf.findIndex((v) => x <= v)]!;
     const r = c.R * Math.cbrt(rand());
-    tmp.set(gaussian(rand), gaussian(rand) * 0.35, gaussian(rand)).normalize().multiplyScalar(r);
+    tmp.set(gaussian(rand), gaussian(rand), gaussian(rand)).normalize().multiplyScalar(r);
+    tmp.y *= 0.22; // the thin disk: the neighbourhood is a flattened slab, not a ball
     const L = c.L[0] * Math.pow(c.L[1] / c.L[0], rand());
     const T = c.T * (0.9 + 0.2 * rand());
     const [cr, cg, cb] = blackbodyRGB(T);
@@ -225,16 +234,17 @@ export function createNeighbourhood(count: number, resolution: Vec2Uniform, fovD
   const dir = normalize(positionWorld.sub(cameraPosition));
   const b = asin(clamp(dir.y, -1, 1));
   const l = atan(dir.z.negate(), dir.x);
-  const sigma = float(0.085).add(exp(l.mul(l).div(-0.35)).mul(0.1));
+  const sigma = float(0.055).add(exp(l.mul(l).div(-0.3)).mul(0.075));
   const bandI = exp(b.mul(b).div(sigma.mul(sigma)).negate());
-  const bulge = float(0.35).add(exp(l.mul(l).div(-0.45)).mul(1.1));
-  const mott = fbm(dir.mul(7.0), 4).mul(0.5).add(0.75);
-  const rift = smoothstep(0.0, 0.35, fbm(dir.mul(4.0).add(11.0), 4).add(abs(b).mul(4.0)).sub(0.05)).mul(0.75).add(0.25);
-  const riftOn = mix(float(1), rift, exp(l.mul(l).div(-1.4)));
+  const bulge = float(0.3).add(exp(l.mul(l).div(-0.35)).mul(1.3));
+  // Star clouds and the dark rifts of dust along the plane (strongest toward the Galactic Centre).
+  const mott = smoothstep(-0.25, 0.45, fbm(dir.mul(16.0), 5)).mul(0.8).add(0.3);
+  const rift = smoothstep(0.02, 0.3, fbm(dir.mul(5.0).add(11.0), 4).add(abs(b).mul(5.0)).sub(0.08)).mul(0.85).add(0.15);
+  const riftOn = mix(float(1), rift, exp(l.mul(l).div(-1.6)));
   const warm = vec3(...(blackbodyRGB(4600) as [number, number, number]));
   const cool = vec3(...(blackbodyRGB(7000) as [number, number, number]));
   const col = mix(cool, warm, exp(l.mul(l).div(-0.8)));
-  mat.colorNode = col.mul(bandI.mul(bulge).mul(mott).mul(riftOn).mul(0.16)).mul(u.band);
+  mat.colorNode = col.mul(bandI.mul(bulge).mul(mott).mul(riftOn).mul(0.032)).mul(u.band);
   mat.opacityNode = float(1);
   const band = new Mesh(geo, mat);
   band.frustumCulled = false;

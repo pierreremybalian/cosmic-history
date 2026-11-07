@@ -24,11 +24,16 @@ import {
   ringOffset,
   SLOT,
   slotExtra,
+  slotAt,
   slotOf,
   slotStrand,
   strandPoint,
   unitVec,
   wrapBox,
+  createHeroes,
+  heroMatch,
+  lightPackets,
+  type Hero,
   type ColorU,
   type F,
   type FloatU,
@@ -62,6 +67,8 @@ export interface QgpUniforms {
   curSharp: FloatU;
   curVoids: FloatU;
   curFloor: FloatU;
+  /** Foreground slots: 0 = an ordinary slot that follows the camera, 1 = an excess-matter (gold) slot. */
+  heroes: Hero[];
 }
 
 export function createQgpUniforms(): QgpUniforms {
@@ -85,6 +92,7 @@ export function createQgpUniforms(): QgpUniforms {
     curSharp: uniform(3),
     curVoids: uniform(0.95),
     curFloor: uniform(0.15),
+    heroes: createHeroes(2),
   };
 }
 
@@ -114,10 +122,17 @@ export interface QgpShape {
   gold: readonly [number, number, number];
   colourCharge: readonly (readonly [number, number, number])[];
   rippleScale: number;
+  /** Gluon instances reserved for the hero slots. */
+  heroGluons: number;
   glitterWidth: number;
   glitterIntensity: number;
   /** Amplitude of the glitter's swirl (world units). */
   glitterDrift: number;
+}
+
+/** 1 inside a hero slot. */
+function isHero(slot: U, u: QgpUniforms): F {
+  return u.heroes.reduce<F>((acc, h) => acc.add(heroMatch(slot, h)), float(0)).clamp(0, 1);
 }
 
 /** Brightness from the plasma's hot currents at world position p. */
@@ -130,7 +145,7 @@ function flowOf(s: QgpShape, u: QgpUniforms, length: number): StrandFlow {
 }
 
 function slotsOf(s: QgpShape, u: QgpUniforms, view: ViewRig): SlotStrand {
-  return { box: view.box, flow: flowOf(s, u, s.slotStrandLength), c: s.c, spacing: s.slotSpacing };
+  return { box: view.box, flow: flowOf(s, u, s.slotStrandLength), c: s.c, spacing: s.slotSpacing, heroes: u.heroes };
 }
 
 function ripple(base: V3, box: F, u: QgpUniforms, density: Data3DTexture, scale: number): F {
@@ -155,8 +170,8 @@ function quarkPos(i: U, tau: F, s: QgpShape, u: QgpUniforms, so: SlotStrand): V3
   const extra = slotExtra(slot, s.extraFrac);
   const st = slotStrand(slot, tau, so);
   const { arcM, ease } = memberArc(i, u);
-  const p = strandPoint(st.x0, st.arc0.add(arcM.mul(st.du)), so.flow);
-  const wob = abc(rand3(i, 20).mul(6.28).add(vec3(tau.mul(1.1), tau.mul(0.9), tau.mul(1.3)))).mul(s.wobble);
+  const p = slotAt(st, arcM);
+  const wob = abc(rand3(i, 20).mul(6.28).add(vec3(tau.mul(1.1), tau.mul(0.9), tau.mul(1.3)))).mul(float(s.wobble).mul(float(1).add(isHero(slot, u).mul(2.5))));
   const kid = slot.mul(64).add(charge.toUint().add(40)) as U;
   const axis = unitVec(hash(kid), hash(kid.add(3)));
   const phase = hash(kid.add(6)).mul(Math.PI * 2).add(anti.mul(Math.PI));
@@ -175,7 +190,7 @@ export function quarkLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, density: 
   const headU = quarkPos(i, u.clockM, s, u, so);
   const head = wrapBox(headU, view.centre, box);
   // Motion trail: tangent to the flow over one trail window (cheap and continuous through the strand wrap).
-  const tail = head.sub(flowDir(headU, so.flow).mul(st.speed.mul(u.trailQ)));
+  const tail = head.sub(st.tan.mul(st.speed.mul(u.trailQ)));
 
   const quarkCol = chargeColour(charge, s.colourCharge);
   const antiCol = mix(quarkCol, vec3(1), 0.5).mul(0.85);
@@ -189,7 +204,7 @@ export function quarkLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, density: 
 
   const vis = below(rand(slot, 16), u.reveal).mul(float(1).sub(extra.mul(anti))).mul(boxFade(head, view.centre, box)).mul(st.fade);
   const flash = float(1).add(u.flash.mul(1.4));
-  const heatK = mix(heat(head, u), float(1), u.gold.mul(extra));
+  const heatK = mix(heat(head, u), float(1), u.gold.mul(extra).max(isHero(slot, u)));
   const intensity = float(s.quarkIntensity * gain)
     .mul(u.bright)
     .mul(ripple(st.x0, box, u, density, s.rippleScale))
@@ -198,7 +213,10 @@ export function quarkLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, density: 
     .mul(flash)
     .mul(goldGlow)
     .mul(heatK);
-  const width = float(s.quarkWidth).mul(float(1).add(u.gold.mul(extra).mul(0.8))).mul(float(1).add(u.higgs.mul(0.2)));
+  const width = float(s.quarkWidth)
+    .mul(float(1).add(u.gold.mul(extra).mul(0.8)))
+    .mul(float(1).add(u.higgs.mul(0.2)))
+    .mul(float(1).add(isHero(slot, u).mul(0.5)));
   return { head, tail, width, color: col.mul(intensity), tailGlow: 0.05 };
 }
 
@@ -210,7 +228,11 @@ export function gluonLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, gain: num
   const x = u.clockC.div(period).add(rand(j, 1).mul(17));
   const cyc = floor(x);
   const ph = fract(x);
-  const slot = floor(randC(j, 2, cyc).mul(slots)).toUint() as U;
+  // The first gluons always spark inside the hero slots, so the foreground cluster is visibly bound by them.
+  const jf = j.toFloat();
+  const heroPick = float(1).sub(smoothstep(s.heroGluons - 0.5, s.heroGluons, jf));
+  const heroId = mix(u.heroes[0]!.id, u.heroes[1]!.id, mod(jf, 2));
+  const slot = floor(mix(randC(j, 2, cyc).mul(slots), heroId.add(0.5), heroPick)).toUint() as U;
   const a = floor(randC(j, 3, cyc).mul(SLOT));
   const b = mod(a.add(1).add(floor(randC(j, 4, cyc).mul(SLOT - 1))), SLOT);
   const ia = slot.mul(SLOT).add(a.toUint()) as U;
@@ -222,8 +244,8 @@ export function gluonLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, gain: num
   const run = ph.mul(1.0 + s.gluonLag);
   const arcH = mix(arcA, arcB, smoothstep(0, 1, run.clamp(0, 1)));
   const arcT = mix(arcA, arcB, smoothstep(0, 1, run.sub(s.gluonLag).clamp(0, 1)));
-  const headU = strandPoint(st.x0, st.arc0.add(arcH.mul(st.du)), so.flow);
-  const tailU = strandPoint(st.x0, st.arc0.add(arcT.mul(st.du)), so.flow);
+  const headU = slotAt(st, arcH);
+  const tailU = slotAt(st, arcT);
   const head = wrapBox(headU, view.centre, box);
   const tail = head.sub(headU.sub(tailU));
 
@@ -243,7 +265,7 @@ export function gluonLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, gain: num
     .mul(vis)
     .mul(dim)
     .mul(float(1).add(u.flash))
-    .mul(heat(head, u));
+    .mul(mix(heat(head, u), float(1), heroPick));
   return { head, tail, width: float(s.gluonWidth), color: col.mul(intensity), tailGlow: 0.1 };
 }
 
@@ -268,7 +290,7 @@ export function bathLayer(s: QgpShape, u: QgpUniforms, view: ViewRig, density: D
   const ends = sin(arc.mul(Math.PI)).sqrt();
   // After the split photons stand out as the fast, bright streams (with gluons).
   const lift = mix(float(1), float(2.2), u.split.mul(photon));
-  const tone = rand(i, 8).mul(0.7).add(0.3);
+  const tone = lightPackets(rand(i, 7), strand, rand(i, 8));
   const flash = float(1).add(u.flash.mul(2.0));
   const intensity = float(s.bathIntensity * gain)
     .mul(u.bright)

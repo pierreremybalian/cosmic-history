@@ -36,22 +36,23 @@ import {
   type SunSprite,
 } from './planet.ts';
 import { loadGeography, type Geography } from './geography.ts';
+import { HANDOFF } from './handoff.ts';
 import { PLATE, plateInverseQuats, siteAt, dirFromLatLon } from './plates.ts';
 import { ARCHEAN_HAZE, EVENTS, EVENT_IDS, northIceSheet, params as T, sunLuminosity, table, tableRGB, type EventKey } from './timeline.ts';
 
 // ── Tunables ───────────────────────────────────────────────────────────────────
 export const params = {
-  fov: 30,
+  fov: HANDOFF.camera.fov,
   /** World direction toward the Sun (fixed; the camera orbits). */
-  sunDir: [-0.85, 0.12, 0.5] as const,
+  sunDir: HANDOFF.sunDir,
   sunDistance: 900,
   /** Sun disc angular radius (rad), ~2× real for legibility. */
   sunAngularRadius: 0.009,
-  sunHaloScale: 0.35,
+  sunHaloScale: 0.16,
   sunDiscRadiance: 40,
   /** Surface irradiance scale (1 ≈ white surface facing the Sun reads ≈ 1). */
   sunIntensity: 1.0,
-  ambient: 0.012,
+  ambient: HANDOFF.ambient,
   /** Modern atmosphere, SI (Rayleigh at 680/550/440 nm; Mie; ozone Chappuis band). */
   atmosphere: {
     rayleigh: [5.802e-6, 13.558e-6, 33.1e-6],
@@ -61,14 +62,14 @@ export const params = {
     mieG: 0.8,
     haze: [0, 0, 0],
     hazeAlbedo: 0.75,
-    hazeScaleHeightM: 15000,
+    hazeScaleHeightM: 26000,
     ozone: [0.65e-6, 1.881e-6, 0.085e-6],
     exaggeration: 3,
   } satisfies AtmosphereSpec as AtmosphereSpec,
   /** Hadean steam/CO₂ atmosphere: extra Mie haze (white). */
   hadeanMie: 2.4e-5,
   /** Impact winter soot as an absorbing haze (1/m at sea level). */
-  sootHaze: [6e-5, 6.5e-5, 7e-5] as const,
+  sootHaze: [1.1e-5, 1.25e-5, 1.4e-5] as const,
   stars: { count: 2600, radius: 2000, brightness: 0.55 },
   /** Idle spin (rad/s) for a 24 h day; scaled by 24 / day length. */
   idleSpin: 0.03,
@@ -77,51 +78,59 @@ export const params = {
   /** Cloud drift relative to the ground (rad/s). */
   cloudDrift: 0.005,
   /** Weather slides relative to the ground as time passes (radians across both chapters). */
-  cloudEraTurn: 5,
-  /** Camera keys over u (scroll progress across life + complexLife): u, az°, el°, distance, (spare), (spare). */
+  cloudEraTurn: -HANDOFF.cloudTurnStart,
+  /** Camera keys over u (scroll progress across life + complexLife): u, az°, el°, distance, look offset x/y (planet radii, camera space). */
   camera: [
-    [0.0, 0, 8, 5.6, 0, 0],
-    [0.05, -8, 7, 4.7, 0, 0],
-    [0.1, -20, 10, 4.3, 0, 0],
-    [0.165, 25, 7, 4.6, 0, 0],
-    [0.205, 96, 2.5, 4.6, 0, 0],
-    [0.225, 111, 1.8, 4.6, 0, 0],
-    [0.248, 114, 1.8, 4.6, 0, 0],
-    [0.272, 60, 13, 4.8, 0, 0],
-    [0.305, 6, 18, 5.0, 0, 0],
-    [0.34, -14, 11, 4.4, 0, 0],
-    [0.4, -30, 8, 4.8, 0, 0],
-    [0.44, -10, 22, 5.2, 0, 0],
-    [0.462, 4, 16, 4.7, 0, 0],
-    [0.48, 14, 10, 4.2, 0, 0],
-    [0.51, 10, 12, 4.6, 0, 0],
-    [0.555, -4, 14, 4.4, 0, 0],
-    [0.585, -4, 14, 4.2, 0, 0],
-    [0.62, 6, 10, 4.6, 0, 0],
-    [0.68, 20, 9, 4.8, 0, 0],
-    [0.745, 2, 28, 4.6, 0, 0],
-    [0.83, -10, 30, 4.4, 0, 0],
-    [0.9, -14, 18, 4.8, 0, 0],
-    [0.96, -6, 10, 5.4, 0, 0],
-    [1.0, 0, 8, 5.6, 0, 0],
+    [0.0, HANDOFF.camera.az, HANDOFF.camera.el, HANDOFF.camera.dist, 0, 0],
+    [0.05, -36, 7, 4.8, 0, 0],
+    [0.1, -42, 10, 4.4, 0, 0],
+    [0.15, -22, 8, 4.6, 0, 0],
+    // A brief cinematic moment: sunrise over the limb of the hazy Archean Earth (orange ring).
+    [0.19, 84, 4, 3.8, -0.4, 0.08],
+    [0.205, 101, 3.5, 3.3, -0.6, 0.16],
+    [0.215, 102, 3.5, 3.3, -0.6, 0.16],
+    // Back to a lit face for the Great Oxidation (u ≈ 0.23–0.25) and the snowball that follows.
+    [0.24, -18, 12, 4.8, 0, 0],
+    [0.27, -30, 18, 5.0, 0, 0],
+    [0.3, -34, 16, 4.9, 0, 0],
+    [0.34, -42, 11, 4.4, 0, 0],
+    [0.4, -50, 8, 4.8, 0, 0],
+    [0.44, -32, 22, 5.2, 0, 0],
+    [0.462, -26, 16, 4.7, 0, 0],
+    [0.48, -36, 10, 4.2, 0, 0],
+    [0.51, -32, 12, 4.6, 0, 0],
+    [0.555, -28, 14, 4.4, 0, 0],
+    [0.585, -28, 14, 4.2, 0, 0],
+    [0.62, -38, 10, 4.6, 0, 0],
+    [0.68, -45, 9, 4.8, 0, 0],
+    [0.745, -32, 28, 4.6, 0, 0],
+    [0.83, -36, 30, 4.4, 0, 0],
+    [0.9, -34, 18, 4.8, 0, 0],
+    [0.96, -31, 10, 5.4, 0, 0],
+    [1.0, HANDOFF.camera.az, HANDOFF.camera.el, HANDOFF.camera.dist, 0, 0],
   ] as const,
   /** Chicxulub (present-day lat/lon, on the North American plate). */
   chicxulub: [21.3, -89.5] as const,
   /** K–Pg: flash width, bolide lead-in, ring and soot spans (in u). */
-  kpg: { flashU: 0.0022, bolideU: 0.006, ringU: 0.03, sootIn: 0.004, sootHold: 0.012, sootOut: 0.045 },
+  kpg: { flashU: 0.0022, bolideU: 0.006, ringU: 0.02, sootIn: 0.004, sootHold: 0.012, sootOut: 0.045 },
   /** Planet-rotation locks: [u ramp-in start, full from, full until, ramp-out end]. */
   locks: {
     kpg: [0.548, 0.566, 0.59, 0.612] as const,
-    end: [0.79, 0.84, 1.0, 1.01] as const,
+    end: [0.715, 0.76, 1.0, 1.01] as const,
   },
-  /** Present-day longitude facing the camera during the closing lock: the Atlantic, then Africa. */
+  /**
+   * Present-day longitude facing the camera during the closing lock: North America and the Atlantic while
+   * the ice sheets come and go, Africa when Homo sapiens appears (u ≈ 0.855), Africa and Eurasia as people
+   * spread out (u ≈ 0.935), Africa again for the calm final frame.
+   */
   endLon: [
-    [0.84, -45],
-    [0.92, -20],
-    [0.975, 18],
+    [0.76, -78],
+    [0.83, -50],
+    [0.855, 18],
+    [0.935, 38],
+    [0.975, 20],
     [1.0, 20],
   ] as const,
-  endLat: 6,
 };
 
 const D2R = Math.PI / 180;
@@ -174,6 +183,7 @@ export default (): CosmicScene => {
   const yAxis = new Vector3(0, 1, 0);
   const impactLocal = new Vector3();
   const endSite = new Vector3();
+  const lookAt = new Vector3();
 
   // u (scroll progress across both chapters) ↔ lookback
   const iLife = chapterIndex('life');
@@ -260,7 +270,7 @@ export default (): CosmicScene => {
       atmo.hazeAlbedo = 0.75 - 0.6 * kpgSoot;
       setAtmosphereUniforms(pu, atmo, 1);
       if (planet.atmosphere) planet.atmosphere.scale.setScalar(1 + pu.atmoTop.value);
-      pu.soot.value = kpgSoot * 0.9;
+      pu.soot.value = kpgSoot * 0.45;
 
       // ── Sun ──
       const lum = sunLuminosity(L);
@@ -287,10 +297,15 @@ export default (): CosmicScene => {
       pu.hotspots.value = table(T.hotspots, L);
       pu.snowball.value = table(T.snowball, L);
       pu.iceEdge.value = table(T.iceEdge, L);
-      pu.iceEdgeNorthLand.value = northIceSheet(L);
+      const nhEdge = northIceSheet(L);
+      const glacial = clamp01((1 - nhEdge) / 0.34); // 0 interglacial → 1 glacial maximum
+      pu.iceEdgeNorthLand.value = nhEdge;
       pu.photoIce.value = table(T.antarcticIce, L);
       pu.northIce.value = table(T.northIce, L);
-      pu.cloudCover.value = table(T.cloudCover, L);
+      // Glacials: drier, clearer air, lower seas (shelves exposed), sea ice further south.
+      pu.cloudCover.value = table(T.cloudCover, L) - 0.12 * glacial;
+      pu.seaLevel.value -= 0.025 * glacial;
+      pu.iceEdge.value -= 0.06 * glacial;
       pu.time.value = elapsed;
 
       // Plates: real geography (Phanerozoic) and noise plates (deep time), drifting slowly with L.
@@ -315,7 +330,13 @@ export default (): CosmicScene => {
       const el = cam[1]! * D2R;
       const dist = cam[2]!;
       camera.position.set(Math.sin(az) * Math.cos(el) * dist, Math.sin(el) * dist + Math.sin(elapsed * 0.05) * 0.04, Math.cos(az) * Math.cos(el) * dist);
-      camera.lookAt(0, 0, 0);
+      // Look offset in camera space (e.g. toward the limb for the sunrise shots).
+      v3.copy(camera.position).negate().normalize(); // forward
+      v3b.crossVectors(v3, yAxis).normalize(); // right
+      lookAt.copy(v3b).multiplyScalar(cam[3]!);
+      v3b.cross(v3); // up
+      lookAt.addScaledVector(v3b, cam[4]!);
+      camera.lookAt(lookAt);
 
       // ── planet rotation ──
       const dayH = table(T.dayHours, L);
@@ -332,7 +353,7 @@ export default (): CosmicScene => {
       if (wK >= wE) {
         target = az + 0.3 * (sunAz - az) - Math.atan2(impactLocal.x, impactLocal.z);
       } else {
-        siteAt(PLATE.africa, params.endLat, table(params.endLon, u), Math.min(L, 560), endSite);
+        siteAt(PLATE.africa, 0, table(params.endLon, u), Math.min(L, 560), endSite);
         target = az + 0.15 * (sunAz - az) - Math.atan2(endSite.x, endSite.z);
       }
       if (w > 0) {

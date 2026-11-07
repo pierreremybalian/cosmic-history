@@ -115,18 +115,20 @@ export function fogMaterial(
       const t = span.x.add(float(i).add(jit).mul(dt));
       const p = ro.add(rd.mul(t));
       const sdf = bubbleSDF(b, p);
-      const neutral = smoothstep(-0.05, 0.08, sdf);
+      const neutral = smoothstep(-0.16, 0.16, sdf);
       const ball = float(1).sub(smoothstep(R - STRUCTURE.ballFeather, R, p.length()));
       const delta = eulerianDelta(f, p, u.uA);
       const gas = clamp(exp(delta.mul(0.8)), 0.35, 3);
       const near = smoothstep(0.3, 1.6, t);
       const sigma = b.uSigma.mul(neutral).mul(ball).mul(gas).mul(near);
-      // Ionisation front: just outside the bubble surface, where neutral gas is being ionised.
-      const fw = u.uFrontWidth;
-      const ds = sdf.sub(fw.mul(0.5));
-      const front = exp(ds.mul(ds).div(fw.mul(fw)).negate()).mul(ball).mul(near).mul(clamp(gas, 0.5, 1.6));
-      const e = u.fogColour.mul(sigma.mul(u.uFogGlow)).add(u.frontColour.mul(front.mul(u.uFront)));
-      acc.addAssign(e.mul(T).mul(dt));
+      // Ionisation front: a thin shell just outside the bubble surface, normalised so a perpendicular crossing adds
+      // uFront whatever the width (grazing rays get more: limb-brightened rims). Width ≥ one step keeps it grain-free.
+      const fw = max(u.uFrontWidth, dt.mul(0.9));
+      const ds = sdf.sub(fw.mul(0.6));
+      const farFront = smoothstep(1.0, 4.5, t);
+      const front = exp(ds.mul(ds).div(fw.mul(fw)).negate()).div(fw.mul(1.7725)).mul(ball).mul(farFront).mul(clamp(gas, 0.6, 1.5)).mul(dt);
+      const glow = u.fogColour.mul(sigma.mul(u.uFogGlow)).mul(dt);
+      acc.addAssign(glow.add(u.frontColour.mul(front.mul(u.uFront))).mul(T));
       T.mulAssign(exp(sigma.mul(dt).negate()));
     });
     return vec4(acc, float(1).sub(T));

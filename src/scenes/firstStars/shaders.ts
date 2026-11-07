@@ -88,12 +88,12 @@ export function gasMaterial(s: SiteNodes, perSite: number, u: { uR: FloatUniform
   m.positionNode = pos;
   const fadeIn = smoothstep(start.sub(0.08), start, s.uL);
   const eaten = float(1).sub(smoothstep(B.x.sub(0.01), B.x.add(0.04), s.uL));
-  const bright = fadeIn.mul(eaten).mul(f.mul(f).mul(1.4).add(0.18));
+  const bright = fadeIn.mul(eaten).mul(f.mul(0.55).add(0.22));
   const dCam = pos.sub(cameraPosition).length();
   m.scaleNode = u.uSize.mul(f.mul(0.6).add(1)).mul(clamp(dCam.div(s.uRef), 0.1, 1));
   const rr = spriteR();
   const disc = float(1).sub(smoothstep(0.0, 1.0, rr)).pow(1.8);
-  m.colorNode = densityColorNode(f.mul(0.45).add(0.52)).mul(disc).mul(bright).mul(u.uPeak);
+  m.colorNode = densityColorNode(f.mul(0.28).add(0.5)).mul(disc).mul(bright).mul(u.uPeak);
   m.opacityNode = float(1);
   return m;
 }
@@ -118,7 +118,7 @@ export function starMaterial(
   const flash = step(0, sn).mul(exp(max(sn, 0).div(u.uFlashTau).negate())).mul(C.x);
   const live = ign.mul(float(1).sub(dead)).mul(flare);
   m.positionNode = A.xyz;
-  m.scaleNode = u.uSize.mul(B.w.mul(0.5).add(0.75)).mul(flash.mul(1.5).add(1)).mul(step(0.0001, live.add(flash)));
+  m.scaleNode = u.uSize.mul(B.w.mul(0.5).add(0.75)).mul(flash.add(1)).mul(step(0.0001, live.add(flash)));
   const r = spriteR();
   const core = exp(r.mul(r).mul(-260));
   const glow = exp(r.mul(r).mul(-22)).mul(0.09);
@@ -156,7 +156,7 @@ export function nebulaMaterial(s: SiteNodes, lines: LineColours, u: { uR: FloatU
   const g2 = sqrt(smoothstep(B.z, B.z.add(0.16), L));
   const metal = p2.div(max(p1.add(p2), 0.001));
   const size = B.w.mul(0.45).add(0.75);
-  const R = u.uR.mul(size).mul(mix(g1, g2.mul(0.78), metal)).add(0.001);
+  const R = u.uR.mul(size).mul(mix(g1, g2.mul(0.55), metal)).add(0.001);
   const vis = max(p1, p2);
   const seed = hash(float(instanceIndex).mul(13).add(5)).mul(97);
   m.positionNode = A.xyz;
@@ -186,7 +186,7 @@ export function nebulaMaterial(s: SiteNodes, lines: LineColours, u: { uR: FloatU
         .add(lines.sII.mul(front.mul(0.5)));
       acc.addAssign(mix(primordial, enriched, metal));
     });
-    return acc.mul(h.mul(0.5)).mul(vis).mul(u.uPeak);
+    return acc.mul(h.mul(0.5)).mul(vis).mul(u.uPeak).mul(mix(float(1), float(0.6), metal));
   })();
   m.opacityNode = float(1);
   return m;
@@ -222,8 +222,8 @@ export function cloudMaterial(s: SiteNodes, u: { uR: FloatUniform; uInfall: Floa
     const halo = exp(r.mul(r).mul(-3.5)).mul(0.2);
     const edge = float(1).sub(smoothstep(0.75, 1.05, r));
     const dens = prof.mul(n.mul(0.9).add(0.65)).add(halo.mul(n.mul(0.5).add(0.5))).mul(edge);
-    const lift = pow(float(0.55).div(sigma), 0.6);
-    return densityColorNode(clamp(f.mul(0.4).add(0.42).add(prof.mul(0.08)), 0, 1)).mul(dens).mul(lift).mul(vis).mul(u.uPeak);
+    const lift = pow(float(0.55).div(sigma), 0.4);
+    return densityColorNode(clamp(f.mul(0.26).add(0.44).add(prof.mul(0.06)), 0, 1)).mul(dens).mul(lift).mul(vis).mul(u.uPeak);
   })();
   m.opacityNode = float(1);
   return m;
@@ -256,8 +256,8 @@ export function shellMaterial(
     const sR = pow(fc, u.uSedov).mul(0.95);
     const zf = sqrt(max(sR.mul(sR).sub(r.mul(r)), 0));
     const dir = s.uRight.mul(p.x).add(s.uUp.mul(p.y)).add(s.uFwd.mul(zf)).normalize();
-    const nLow = mx_noise_float(dir.mul(2.2).add(seed));
-    const se = sR.mul(nLow.mul(0.15).add(1));
+    const nLow = mx_noise_float(dir.mul(1.5).add(seed)).add(mx_noise_float(dir.mul(3.1).add(seed.mul(2))).mul(0.4));
+    const se = sR.mul(nLow.mul(0.2).add(1));
     const w = se.mul(0.05).add(0.004);
     const outer = sqrt(max(se.add(w).mul(se.add(w)).sub(r.mul(r)), 0));
     const innerC = sqrt(max(se.mul(se).sub(r.mul(r)), 0));
@@ -306,12 +306,12 @@ export function ejectaMaterial(
   const sinT = sqrt(max(float(1).sub(cosT.mul(cosT)), 0));
   const phi = h2.mul(Math.PI * 2);
   const dir = vec3(sinT.mul(cos(phi)), cosT, sinT.mul(sin(phi)));
-  const speed = pow(h3, 0.35).mul(0.35).add(0.62);
+  const speed = pow(h3, 0.25).mul(0.16).add(0.82);
   const R = u.uRmax.mul(B.w.mul(0.3).add(0.85)).mul(pow(fc, u.uSedov)).mul(speed).mul(0.93);
   m.positionNode = A.xyz.add(dir.mul(R));
   const vd = cameraViewMatrix.mul(vec4(dir, 0)).xy;
   m.rotationNode = atan(vd.y, vd.x);
-  const streak = float(1).add(speed.mul(float(1).sub(fc)).mul(vd.length()).mul(2.2));
+  const streak = float(1).add(float(1).sub(fc).mul(vd.length()).mul(1.4));
   m.scaleNode = vec2(u.uSize.mul(streak), u.uSize.mul(0.5)).mul(active);
   const col = mix(lines.oIII, lines.sII.mul(1.8), step(0.72, h4));
   const r = spriteR();

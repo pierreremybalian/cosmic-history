@@ -40,6 +40,7 @@ import {
   createStructureWeb,
   fieldNodes,
   focusShift,
+  ramp,
   haloMaterial,
   hazeMaterial,
   type StructureWeb,
@@ -49,7 +50,7 @@ import { afterglowMaterial, markerMaterial, sliceMaterial } from './shaders.ts';
 const params = {
   afterglow: {
     /** Linear HDR brightness of the sky at the start of the chapter (photon T ≈ 2900 K). */
-    peak: 0.4,
+    peak: 0.75,
     /**
      * Visible luminance (CIE Y of the blackbody) falls ~10⁷× by T = 1000 K; shown ∝ (Y/Y₀)^γ so the fade spans the
      * first beats instead of one frame (an adapting eye). Stated in the note.
@@ -65,9 +66,10 @@ const params = {
     brightness: [
       [0, 0.16],
       [0.14, 0.2],
-      [0.3, 0.32],
-      [0.44, 0.62],
-      [0.7, 0.92],
+      [0.3, 0.3],
+      [0.44, 0.5],
+      [0.6, 0.74],
+      [0.75, 0.92],
       [1, 1.0],
     ] as [number, number][],
     contrast: [
@@ -82,8 +84,8 @@ const params = {
     brightness: [
       [0, 0.004],
       [0.3, 0.012],
-      [0.44, 0.024],
-      [0.6, 0.034],
+      [0.44, 0.03],
+      [0.6, 0.04],
       [1, 0.05],
     ] as [number, number][],
     /** Fraction of the tier's raymarch steps. */
@@ -104,18 +106,6 @@ const params = {
     markerSize: 0.34,
     sliceRadius: 4.6,
   },
-};
-
-const ramp = (keys: [number, number][], x: number) => {
-  if (x <= keys[0]![0]) return keys[0]![1];
-  for (let i = 1; i < keys.length; i++) {
-    const [b, vb] = keys[i]!;
-    if (x <= b) {
-      const [a, va] = keys[i - 1]!;
-      return va + ((vb - va) * (x - a)) / (b - a);
-    }
-  }
-  return keys[keys.length - 1]![1];
 };
 
 export default (): CosmicScene => {
@@ -206,6 +196,8 @@ export default (): CosmicScene => {
         const r = params.debug.sliceRadius;
         const slice = new Mesh(new PlaneGeometry(2 * r, 2 * r, 1, 1), sliceMaterial(ctx.field.textures().density, shift, mode === 'zeta' ? 'g' : 'b', r));
         slice.rotation.x = -Math.PI / 2;
+        // Through the highest peak's Lagrangian (A = 0) position: its track starts on the slice's hottest spot.
+        slice.position.y = seeds.count ? seeds.lagrangian[1]! : 0;
         slice.renderOrder = 1;
         scene.add(slice, tracks, markers);
         debug = { markers, tracks, slice, data, trackPos };

@@ -111,14 +111,14 @@ export function createExpansionRings(o: RingOptions): ExpansionRings {
   const nowRing = float(1).sub(smoothstep(fw.mul(0.45), fw.mul(1.5), dNow));
   const nowGlow = exp(dNow.div(fw.mul(4)).negate()).mul(0.08);
   const dFront = abs(tf.sub(u.tFront));
-  const front = exp(dFront.div(fw.mul(3)).negate()).mul(step(u.tNow.add(0.3), u.tFront)).mul(step(u.tFront, float(o.tMaxGyr - 0.5)));
+  const front = exp(dFront.div(fw.mul(1.4)).negate()).mul(step(u.tNow.add(0.3), u.tFront)).mul(step(u.tFront, float(o.tMaxGyr - 0.5)));
   // Rings fade gently with radius so the outermost don't form a hard frame.
   const fade = float(1).sub(smoothstep(rMax * 0.8, rMax, rho));
   const colPast = vec3(0.6, 0.72, 1.0).mul(0.3);
   const colNow = vec3(1.0, 0.92, 0.78).mul(0.6);
   const colFuture = vec3(0.66, 0.55, 1.0).mul(0.3);
   const colToday = vec3(1.0, 0.84, 0.66).mul(0.6);
-  const colFront = vec3(0.7, 0.6, 1.0).mul(0.35);
+  const colFront = vec3(0.7, 0.6, 1.0).mul(0.5);
   const col = colPast
     .mul(thin.mul(weight).mul(isPast).mul(u.past))
     .add(colFuture.mul(thin.mul(weight).mul(isFuture).mul(u.future)))

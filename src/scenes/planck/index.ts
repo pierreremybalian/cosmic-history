@@ -20,6 +20,7 @@ import { sceneRange } from '../sceneRange.ts';
 import {
   FOAM_HANDOFF,
   applyLook,
+  aspectPullback,
   createFoamNoiseTexture,
   createFoamVolume,
   lerpLook,
@@ -38,10 +39,10 @@ const LOOK_OPEN: FoamLook = {
   breathe: 0.12,
   skin: 0.35,
   skinWidth: 0.16,
-  edge: 7,
+  edge: 8.5,
   edgeWidth: 0.026,
-  node: 30,
-  haze: 0.1,
+  node: 40,
+  haze: 0.12,
   bubbling: 0.7,
   edgeSoft: 0.75,
   core: 0,
@@ -66,10 +67,10 @@ const LOOK_UNIFIED: FoamLook = {
   edge: 0.7,
   edgeWidth: 0.07,
   node: 2,
-  haze: 0.15,
+  haze: 0.1,
   bubbling: 0.2,
   edgeSoft: 0.5,
-  core: 0.35,
+  core: 0.28,
   coreRadiusWorld: 0.9,
   focusGain: 0,
   focusRadius: 0.5,
@@ -84,7 +85,7 @@ const LOOK_END: FoamLook = { ...FOAM_HANDOFF.look };
 export const params = {
   noiseSize: { low: 48, medium: 64, high: 64 } as Record<string, number>,
   /** Raymarch at this fraction of the scene target (the volume is soft; bloom hides the rest). */
-  volumeScale: { low: 0.5, medium: 0.6, high: 0.75 } as Record<string, number>,
+  volumeScale: { low: 0.5, medium: 0.5, high: 0.5 } as Record<string, number>,
   camera: {
     fov: FOAM_HANDOFF.fov,
     distOpen: 7.6,
@@ -102,16 +103,16 @@ export const params = {
   liftY: 0.1,
   /** Brightest region of the opening foam, in local units of the volume. */
   focusOpen: new Vector3(-0.05, 0.08, 0.25),
-  bubble: { radiusWorld: 1.15, widthWorld: 0.012, gain: 10, wobble: 0.015, corona: 0.7, coronaWorld: 0.28 },
+  bubble: { radiusWorld: 1.15, widthWorld: 0.01, gain: 13, corona: 0.7, coronaWorld: 0.28 },
   colours: {
     /** Haze tint; edges use the blackbody colour at the (clamped) temperature, depth sinks to `far`. */
     deep: new Color(0.03, 0.04, 0.3),
     far: new Color(0.16, 0.035, 0.42),
     coreWhite: 0.55,
     gravityGlow: new Color(0.03, 0.01, 0.08),
-    chargeR: new Color(1.0, 0.1, 0.06),
-    chargeG: new Color(0.08, 1.0, 0.2),
-    chargeB: new Color(0.12, 0.28, 1.0),
+    chargeR: new Color(1.0, 0.12, 0.05),
+    chargeG: new Color(0.1, 1.0, 0.18),
+    chargeB: new Color(0.1, 0.3, 1.0),
     strandUnified: new Color(0.8, 0.88, 1.0),
     strandGravity: new Color(0.16, 0.07, 0.34),
     strandElectroweak: new Color(1.0, 0.84, 0.62),
@@ -122,7 +123,7 @@ export const params = {
     gravity: [0.52, 0.8] as const,
     gravityVeil: [0.5, 0.58, 0.7, 0.84] as const,
     strong: [0.83, 0.94] as const,
-    flicker: { centre: 0.895, halfWidth: 0.075, rate: 0.45 },
+    flicker: { centre: 0.895, halfWidth: 0.075, rate: 0.9 },
     toCentre: [0.85, 1.0] as const,
     calm: [0.9, 1.0] as const,
     strandsIn: [0.3, 0.44] as const,
@@ -137,16 +138,16 @@ export const params = {
     spin: 0.05,
     /** Ring plane normal (tilted towards the camera so the ring reads as an open ellipse). */
     normal: new Vector3(-0.22, 0.86, 0.46),
-    braidRadius: 0.1,
-    braidRadiusUnified: 0.055,
-    twist: 18,
+    braidRadius: 0.14,
+    braidRadiusUnified: 0.09,
+    twist: 9,
     tubeRadius: 0.0075,
-    intensity: 0.9,
+    intensity: 1.0,
     flow: 0.9,
     gravitySep: 0.75,
     gravityLift: 0.45,
-    strongSep: 0.35,
-    strongLift: 0.3,
+    strongSep: 0.5,
+    strongLift: 0.6,
     backDim: 0.3,
   },
 };
@@ -166,6 +167,7 @@ export default (): CosmicScene => {
   const look: FoamLook = { ...LOOK_OPEN };
   const target = new Vector3();
   const centre = new Vector3();
+  const rgb: [number, number, number] = [0, 0, 0];
   const P = params;
   const B = P.beats;
 
@@ -260,7 +262,7 @@ export default (): CosmicScene => {
       // ── Camera ──
       let dist = lerp(P.camera.distOpen, P.camera.distUnified, unify);
       dist = lerp(dist, P.camera.distGravity, grav);
-      dist = lerp(dist, P.camera.distEnd, toCentre);
+      dist = lerp(dist, P.camera.distEnd, toCentre) * aspectPullback(camera.aspect);
       const halfW = dist * Math.tan(((P.camera.fov * Math.PI) / 180) * 0.5) * camera.aspect;
       const right = Math.min(halfW * P.rightBias, P.rightBiasMaxWorld);
       centre.set(right * (1 - toCentre), P.liftY * (1 - toCentre), 0);
@@ -282,12 +284,11 @@ export default (): CosmicScene => {
       fu.shellRadius.value = P.bubble.radiusWorld / look.bound;
       fu.shellWidth.value = P.bubble.widthWorld / look.bound;
       fu.shellGain.value = P.bubble.gain * bubbleOn;
-      fu.shellWobble.value = P.bubble.wobble;
       fu.coronaGain.value = P.bubble.corona * bubbleOn;
       fu.coronaLength.value = P.bubble.coronaWorld / look.bound;
 
       // Colour: the blackbody colour at the era's temperature (clamped LUT: the Rayleigh–Jeans blue-white).
-      const [r, gg, b] = blackbodyRGB(g.T);
+      const [r, gg, b] = blackbodyRGB(g.T, rgb);
       fu.hot.value.setRGB(r, gg, b);
       const w = P.colours.coreWhite;
       fu.core.value.setRGB(lerp(r, 1, w), lerp(gg, 1, w), lerp(b, 1, w));

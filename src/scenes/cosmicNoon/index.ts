@@ -11,7 +11,7 @@
 // scenes; ends on MW_FRAME, which darkEnergy opens on.
 
 import { Color, PerspectiveCamera, Quaternion, Scene, SpriteNodeMaterial, Vector3, type RenderTarget, type WebGPURenderer } from 'three/webgpu';
-import { globalsAt } from '../../physics/cosmology.ts';
+import { aAt, globalsAt } from '../../physics/cosmology.ts';
 import { madauDickinsonSFR } from '../../physics/recombination.ts';
 import { webAmplitude } from '../../shared/gaussianField.ts';
 import { clamp01, smoothstep } from '../../shared/math.ts';
@@ -24,6 +24,7 @@ import {
   createGalaxyImpostors,
   createSpiralGalaxy,
   monotoneTrack,
+  MW_ARM_START,
   mwSway,
   MW_FRAME,
   peakWorld,
@@ -36,8 +37,13 @@ import { createSatellites, type Satellites } from './shaders.ts';
 const params = {
   fov: 40,
   web: {
-    brightness: 0.075,
+    brightness: 0.06,
+    /** Show the densest fraction of web particles (filaments and knots; voids stay dark). */
+    reveal: 0.6,
     tint: new Color(0.5, 0.62, 1.0),
+    /** Tint of the gas web at the star-formation peak (Hα-pink glow of star-forming gas), and the brightness gain. */
+    sfTint: new Color(0.95, 0.55, 0.85),
+    sfGain: 0.9,
     /** View depth over which web particles fade out in front of the camera, as fractions of the camera distance. */
     near: [0.3, 0.75] as const,
     /** Sprite size multiplier: ∝ camera distance (so particles stay fine up close), capped. */
@@ -72,9 +78,9 @@ const params = {
     logDistance: [
       [0.0, Math.log10(16)],
       [0.14, Math.log10(7.5)],
-      [0.26, Math.log10(4.6)],
-      [0.37, Math.log10(3.3)],
-      [0.52, Math.log10(2.3)],
+      [0.26, Math.log10(3.6)],
+      [0.37, Math.log10(2.2)],
+      [0.52, Math.log10(2.0)],
       [0.6, Math.log10(1.4)],
       [0.68, Math.log10(0.6)],
       [0.78, Math.log10(MW_FRAME.radius * 4.6)],
@@ -94,8 +100,11 @@ const params = {
       [0.5, -0.1],
       [1, 0],
     ] as [number, number][],
-    /** local range over which the look-at point moves from the box centre to the Milky Way. */
-    target: [0.04, 0.6] as const,
+    /** local ranges: look-at point moves box centre → a massive merging group near us → the Milky Way. */
+    toShowcase: [0.03, 0.24] as const,
+    toMilkyWay: [0.42, 0.62] as const,
+    /** The showcase group: the highest halo peak at this distance range (world units) from the Milky Way. */
+    showcaseDistance: [1.4, 3.6] as const,
   },
   /** Idle rotation of galaxy patterns (rad/s). One MW turn takes ~240 Myr; here it takes minutes. */
   spinRate: 0.02,
@@ -120,6 +129,7 @@ export default (): CosmicScene => {
   let sats: Satellites;
   let ctxRef: RenderContext;
   let mwPeak = 0;
+  let showcasePeak = 0;
   const satNear0 = uniform(0.05);
   const satNear1 = uniform(0.12);
   const webNear0 = uniform(1);
@@ -128,6 +138,7 @@ export default (): CosmicScene => {
   const azim = monotoneTrack(params.camera.azimuth);
   const elev = monotoneTrack(params.camera.elevation);
   const mwPos = new Vector3();
+  const showPos = new Vector3();
   const look = new Vector3();
   const dir = new Vector3();
   const yAxis = new Vector3(0, 1, 0);
@@ -139,7 +150,7 @@ export default (): CosmicScene => {
     range: RANGE,
     accuracy: 'simulated',
     accuracyNote:
-      'Galaxies sit on the halos and filaments of the same simulated web, drawn ~40× larger than true scale so their shapes read; star-formation glow follows the measured Madau & Dickinson curve; rotation and mergers are sped up enormously, and the spiral is a stand-in for the young Milky Way.',
+      'Galaxies sit on the same simulated web, drawn ~40× too large; star-formation glow follows Madau & Dickinson 2014; mergers and spin are hugely sped up.',
     colourMapped: false,
 
     async init(ctx: RenderContext) {
@@ -152,10 +163,25 @@ export default (): CosmicScene => {
       web = createCosmicWeb(ctx);
       web.uniforms.tint.value.copy(params.web.tint);
       web.uniforms.brightness.value = params.web.brightness;
+      web.uniforms.reveal.value = params.web.reveal;
       addNearFade(web.material, webNear0, webNear1);
       scene.add(web.object);
 
       mwPeak = pickMilkyWayPeak(ctx.field);
+      {
+        // Peaks are sorted by height: the first one in the distance window is the most massive group near us.
+        const A1 = webAmplitude(aAt(RANGE[0] + 0.3 * (RANGE[1] - RANGE[0])));
+        peakWorld(ctx.field, mwPeak, A1, mwPos);
+        const n = ctx.field.data!.peaks.length / 4;
+        for (let i = 0; i < n; i++) {
+          if (i === mwPeak) continue;
+          const d = peakWorld(ctx.field, i, A1, showPos).distanceTo(mwPos);
+          if (d > params.camera.showcaseDistance[0] && d < params.camera.showcaseDistance[1]) {
+            showcasePeak = i;
+            break;
+          }
+        }
+      }
       const tier = ctx.quality.name;
       galaxies = createGalaxyImpostors(ctx, {
         fieldGalaxies: params.galaxies.field[tier],
@@ -167,7 +193,7 @@ export default (): CosmicScene => {
       galaxies.uniforms.brightness.value = params.galaxies.brightness;
       scene.add(galaxies.object);
 
-      mw = createSpiralGalaxy({ stars: params.milkyWay.stars[tier], seed: 2024, armSeed: 0.15 });
+      mw = createSpiralGalaxy({ stars: params.milkyWay.stars[tier], seed: 2024, armSeed: 0.15, armStart: MW_ARM_START });
       mw.uniforms.glow.value = params.milkyWay.glow;
       sats = createSatellites({ count: params.satellites.count, streamStars: params.satellites.streamStars });
       mw.group.add(sats.sprites);
@@ -193,6 +219,7 @@ export default (): CosmicScene => {
       const G = galaxies.uniforms;
       G.amplitude.value = A;
       G.sf.value = sfr;
+      G.brightness.value = params.galaxies.brightness * (0.75 + 0.5 * sfr);
       G.maturity.value = params.galaxies.maturity[0] + (params.galaxies.maturity[1] - params.galaxies.maturity[0]) * local;
       G.mergeClock.value = local;
       G.spin.value = spin;
@@ -201,8 +228,9 @@ export default (): CosmicScene => {
       // Camera: log-distance track toward the Milky Way host, orbiting into the closing view.
       peakWorld(ctxRef.field, mwPeak, A, mwPos);
       const D = Math.pow(10, logD(local));
-      const tgt = smoothstep(params.camera.target[0], params.camera.target[1], local);
-      look.set(0, 0, 0).lerp(mwPos, tgt);
+      peakWorld(ctxRef.field, showcasePeak, A, showPos);
+      look.set(0, 0, 0).lerp(showPos, smoothstep(params.camera.toShowcase[0], params.camera.toShowcase[1], local));
+      look.lerp(mwPos, smoothstep(params.camera.toMilkyWay[0], params.camera.toMilkyWay[1], local));
       dir.copy(MW_FRAME.view);
       right.crossVectors(yAxis, dir).normalize();
       dir.applyAxisAngle(right, -elev(local));
@@ -214,11 +242,14 @@ export default (): CosmicScene => {
       camera.updateProjectionMatrix();
 
       // Web fades as we dive into one galaxy.
-      web.uniforms.brightness.value = params.web.brightness * smoothstep(params.web.fade[0], params.web.fade[1], D);
+      // Global star-formation glow: the gas web brightens and warms toward Hα pink with the cosmic SFR.
+      web.uniforms.brightness.value =
+        params.web.brightness * (1 + params.web.sfGain * sfr) * smoothstep(params.web.fade[0], params.web.fade[1], D);
+      web.uniforms.tint.value.copy(params.web.tint).lerp(params.web.sfTint, 0.45 * sfr);
       web.object.visible = web.uniforms.brightness.value > 1e-3;
       webNear0.value = D * params.web.near[0];
       webNear1.value = D * params.web.near[1];
-      G.size.value = 1 + 0.8 * smoothstep(3, 14, D);
+      G.size.value = 1 + 1.5 * smoothstep(3, 14, D);
       satNear0.value = D * 0.35;
       satNear1.value = D * 0.8;
       web.uniforms.size.value = Math.min(params.web.size[1], Math.max(params.web.size[0], D * 0.11));

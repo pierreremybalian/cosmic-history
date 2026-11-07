@@ -26,7 +26,7 @@ export interface EngineOptions {
   /** Force the WebGL2 backend (also via ?webgl=1). */
   forceWebGL?: boolean;
   /** Dev: render one scene at a fixed local instead of following the scroll. */
-  single?: { sceneId: string; local: number; paused?: boolean };
+  single?: { sceneId: string; local: number; paused?: boolean; chapterId?: string };
   /** Skip the 1 s probe (dev, screenshots). */
   skipProbe?: boolean;
   tier?: TierName;
@@ -191,7 +191,10 @@ export async function createEngine(opts: EngineOptions): Promise<Engine | null> 
 
     if (single) {
       const entry = manager!.only(single.sceneId);
-      const chapter = CHAPTERS.find((c) => c.sceneId === single!.sceneId) ?? CHAPTERS[0]!;
+      const chapter =
+        (single.chapterId ? CHAPTERS.find((c) => c.id === single!.chapterId) : undefined) ??
+        CHAPTERS.find((c) => c.sceneId === single!.sceneId) ??
+        CHAPTERS[0]!;
       const { t } = timeInChapter(chapter, single.local);
       globalsAt(t, g);
       globals.update(g, single.local, elapsed);

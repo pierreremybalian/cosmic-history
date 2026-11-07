@@ -20,12 +20,14 @@ import {
   ringOffset,
   SLOT,
   slotExtra,
+  slotAt,
   slotOf,
   slotStrand,
-  strandPoint,
   unitVec,
   wrapBox,
-  flowDir,
+  createHeroes,
+  heroMatch,
+  type Hero,
   type ColorU,
   type F,
   type FloatU,
@@ -55,6 +57,8 @@ export interface HadronUniforms {
   goldHint: FloatU;
   /** Neutron share among survivors (abundances.ts). */
   neutron: FloatU;
+  /** Foreground slots: 0 = a baryon–antibaryon pair that annihilates on the beat, 1 = a survivor, 2 = mesons. */
+  heroes: Hero[];
 }
 
 export function createHadronUniforms(): HadronUniforms {
@@ -73,6 +77,7 @@ export function createHadronUniforms(): HadronUniforms {
     survivor: uniform(0),
     goldHint: uniform(0),
     neutron: uniform(0.5),
+    heroes: createHeroes(3),
   };
 }
 
@@ -119,12 +124,23 @@ export function heat(p: V3, u: HadronUniforms): F {
   return mix(u.curFloor, float(1), currents(p, u.clockM, u.curScale, u.curSharp, u.curVoids));
 }
 
+/** 1 inside a hero slot. */
+function isHero(slot: U, u: HadronUniforms): F {
+  return u.heroes.reduce<F>((acc, h) => acc.add(heroMatch(slot, h)), float(0)).clamp(0, 1);
+}
+
+/** One brightness per hadron: the hot current at the slot's centre (survivors ignore it once they glow). */
+function slotHeat(st: { ref: V3 }, extra: F, u: HadronUniforms, view: ViewRig, slot?: U): F {
+  const keep = slot ? u.survivor.mul(extra).max(isHero(slot, u)) : u.survivor.mul(extra);
+  return mix(heat(wrapBox(st.ref, view.centre, view.box), u), float(1), keep);
+}
+
 export function flowOf(s: HadronShape, u: HadronUniforms, length: number): StrandFlow {
   return { k: s.flowK, length, steps: s.flowSteps, morph: u.morph };
 }
 
 function slotsOf(s: HadronShape, u: HadronUniforms, view: ViewRig): SlotStrand {
-  return { box: view.box, flow: flowOf(s, u, s.slotStrandLength), c: s.c, spacing: s.slotSpacing };
+  return { box: view.box, flow: flowOf(s, u, s.slotStrandLength), c: s.c, spacing: s.slotSpacing, heroes: u.heroes };
 }
 
 /** Per-slot schedule: type flags and the local-driven state of confinement, decay and annihilation. */
@@ -166,8 +182,8 @@ function quarkPos(i: U, tau: F, s: HadronShape, u: HadronUniforms, so: SlotStran
   const freeArc = order.add(rand(i, 32).mul(0.6).sub(0.3));
   const hcArc = hadronArc(anti, charge, sch);
   const arc = mix(freeArc, hcArc, sch.conf);
-  const centre = strandPoint(st.x0, st.arc0.add(hcArc.mul(st.du)), so.flow);
-  const p = strandPoint(st.x0, st.arc0.add(arc.mul(st.du)), so.flow);
+  const centre = slotAt(st, hcArc);
+  const p = slotAt(st, arc);
   const wob = abc(rand3(i, 20).mul(6.28).add(vec3(tau.mul(1.1), tau.mul(0.9), tau.mul(1.3)))).mul(s.wobble);
   // Bound: baryons as a spinning triangle, mesons as a spinning pair.
   const hid = hashU(slot, anti.add(charge.mul(sch.meson)).add(50));
@@ -196,7 +212,7 @@ export function quarkLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, gai
   const st = slotStrand(slot, u.clockM, so);
   const { p: headU } = quarkPos(i, u.clockM, s, u, so);
   const head = wrapBox(headU, view.centre, box);
-  const tail = head.sub(flowDir(headU, so.flow).mul(st.speed.mul(u.trailQ)));
+  const tail = head.sub(st.tan.mul(st.speed.mul(u.trailQ)));
 
   const q = chargeColour(charge, s.colourCharge);
   let col: V3 = mix(q, mix(q, vec3(1), 0.5).mul(0.85), anti);
@@ -205,8 +221,8 @@ export function quarkLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, gai
   const dimSurvivor = mix(float(1), float(0.55), u.survivor.mul(sch.extra));
   const alive = quarkAlive(i, s, u);
   const vis = alive.mul(boxFade(head, view.centre, box)).mul(st.fade);
-  const intensity = float(s.quarkIntensity * gain).mul(u.bright).mul(vis).mul(dimSurvivor).mul(mix(heat(head, u), float(1), sch.bound.mul(0.6)));
-  return { head, tail, width: float(s.quarkWidth), color: col.mul(intensity), tailGlow: 0.05 };
+  const intensity = float(s.quarkIntensity * gain).mul(u.bright).mul(vis).mul(dimSurvivor).mul(slotHeat(st, sch.extra, u, view, slot));
+  return { head, tail, width: float(s.quarkWidth).mul(float(1).add(isHero(slot, u).mul(0.35))), color: col.mul(intensity), tailGlow: 0.05 };
 }
 
 export function stringLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, gain: number): StreakSpec {
@@ -225,7 +241,7 @@ export function stringLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, ga
   const vis = quarkAlive(i, s, u).mul(sch.bound).mul(boxFade(head, view.centre, box)).mul(st.fade);
   const gold = mix(float(1), float(0.5), u.survivor.mul(sch.extra));
   void anti;
-  const intensity = float(s.stringIntensity * gain).mul(u.bright).mul(vis).mul(flicker).mul(gold);
+  const intensity = float(s.stringIntensity * gain).mul(u.bright).mul(vis).mul(flicker).mul(gold).mul(slotHeat(st, sch.extra, u, view, slot));
   return { head, tail, width: float(s.stringWidth), color: tint.mul(intensity), tailGlow: 0.5 };
 }
 
@@ -246,7 +262,7 @@ export function bagLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, gain:
   const arcB = hadronArc(isAnti, k, sch);
   const arcMid = hadronArc(float(0), k, sch).add(hadronArc(float(1), k, sch)).mul(0.5);
   const arc = mix(arcB, arcMid, isFlash);
-  const headU = strandPoint(st.x0, st.arc0.add(arc.mul(st.du)), so.flow);
+  const headU = slotAt(st, arc);
   const head = wrapBox(headU, view.centre, box);
 
   const mesonGone = smoothstep(0, 0.004, u.local.sub(mesonDecayAt(slot, k, s))).mul(sch.meson);
@@ -257,10 +273,10 @@ export function bagLayer(s: HadronShape, u: HadronUniforms, view: ViewRig, gain:
   const survivorCol = mix(v3(s.gold), v3(s.neutronTint), neutron).mul(u.survivor.mul(sch.extra));
   const hadronCol = mix(v3(s.matterTint), v3(s.antiTint), isAnti);
   const col = mix(hadronCol, survivorCol.mul(2.2), u.survivor.mul(sch.extra));
-  const glow = float(s.bagIntensity).mul(bagK).mul(float(1).add(u.survivor.mul(sch.extra).mul(1.5)));
+  const glow = float(s.bagIntensity).mul(bagK).mul(float(1).add(u.survivor.mul(sch.extra).mul(3.0)));
   const flash = float(s.flashIntensity).mul(sch.flashAnn.mul(isFlash).add(mesonFlash.mul(0.5)));
-  const intensity = float(gain).mul(u.bright).mul(boxFade(head, view.centre, box)).mul(st.fade);
+  const intensity = float(gain).mul(u.bright).mul(boxFade(head, view.centre, box)).mul(st.fade).mul(slotHeat(st, sch.extra, u, view, slot).max(isFlash));
   const colour = col.mul(glow).add(vec3(1, 0.97, 0.92).mul(flash)).mul(intensity);
-  const width = mix(mix(float(s.bagWidth), float(s.survivorWidth), u.survivor.mul(sch.extra)), float(s.flashWidth), isFlash);
+  const width = mix(mix(float(s.bagWidth), float(s.survivorWidth), u.survivor.mul(sch.extra)), float(s.flashWidth).mul(float(1).add(isHero(slot, u).mul(1.2))), isFlash);
   return { head, tail: head, width, color: colour, tailGlow: 1 };
 }

@@ -8,7 +8,6 @@
 
 import {
   AdditiveBlending,
-  BackSide,
   Color,
   CustomBlending,
   FrontSide,
@@ -35,7 +34,6 @@ import {
   atan,
   cameraPosition,
   clamp,
-  cos,
   cross,
   dot,
   exp,
@@ -57,7 +55,6 @@ import {
   pow,
   screenCoordinate,
   select,
-  sin,
   smoothstep,
   sqrt,
   texture,
@@ -320,8 +317,8 @@ export function createPlanet(o: PlanetOptions): Planet {
   const surfaceGeo = new SphereGeometry(1, segW, segW / 2);
 
   // ── shared field functions ──
-  const coastOct = lowQ ? 3 : 4;
-  const plateOct = lowQ ? 3 : 4;
+  const coastOct = lowQ ? 2 : 3;
+  const plateOct = lowQ ? 2 : q.name === 'high' ? 4 : 3;
 
   /** Signed "elevation" of noise-plate continents at local direction p (> 0 above sea level). */
   const noiseLand = (p: V3): F => {
@@ -381,7 +378,9 @@ export function createPlanet(o: PlanetOptions): Planet {
     const raw = texture(cloudMap).sample(st).level(lod).r.toVar();
     // Poles are blank in the map: break them up procedurally.
     const polar = smoothstep(0.88, 0.95, abs(c.y));
-    raw.assign(mix(raw, proceduralClouds(c, 3).mul(0.8), polar));
+    If(polar.greaterThan(0.001), () => {
+      raw.assign(mix(raw, proceduralClouds(c, 3).mul(0.8), polar));
+    });
     // Coverage: 0.56 ≈ the map as observed; more → thicker, fewer → only the densest systems remain.
     const k = u.cloudCover.sub(0.56).mul(1.6);
     const lo = k.negate().max(-0.9).add(0.07); // 0.07: drop the faint veil left by differencing two products
@@ -443,7 +442,10 @@ export function createPlanet(o: PlanetOptions): Planet {
 
     // ── ocean ──
     const shelf = smoothstep(-0.12, 0.0, h);
-    const bloomN = smoothstep(0.1, 0.6, fbm(P.mul(5.0).add(vec3(u.time.mul(0.003), 0, 0)), 3).add(0.3).mul(shelf.add(0.35)));
+    const bloomN = float(0).toVar();
+    If(u.oceanLife.greaterThan(0.001), () => {
+      bloomN.assign(smoothstep(0.1, 0.6, fbm(P.mul(5.0).add(vec3(u.time.mul(0.003), 0, 0)), 3).add(0.3).mul(shelf.add(0.35))));
+    });
     let ocean: V3 = mix(u.oceanDeep, u.oceanShallow, shelf.mul(shelf));
     ocean = mix(ocean, u.bloomColour, bloomN.mul(u.oceanLife));
     ocean = mix(ocean, vec3(0.05, 0.32, 0.36), shelf.mul(shelf).mul(shelf).mul(u.shelfTint));
@@ -466,35 +468,60 @@ export function createPlanet(o: PlanetOptions): Planet {
     const lat = abs(P.y);
     const iceNoise = fbm(P.mul(6.0).add(vec3(9.1, 2.2, 4.4)), 3).mul(0.06);
     const polar = smoothstep(u.iceEdge.sub(0.02), u.iceEdge.add(0.02), lat.add(iceNoise).add(land.mul(0.04)));
-    const nhSheet = smoothstep(u.iceEdgeNorthLand.sub(0.03), u.iceEdgeNorthLand.add(0.03), P.y.add(iceNoise.mul(1.5))).mul(land);
+    const nhSheet = smoothstep(u.iceEdgeNorthLand.sub(0.012), u.iceEdgeNorthLand.add(0.012), P.y.add(iceNoise.mul(1.2))).mul(land);
     const pIce = smoothstep(0.55, 0.72, min(photo.r, min(photo.g, photo.b))).mul(u.northIce).mul(u.realPlates).mul(land);
     const ant = antarctic.mul(u.photoIce).mul(u.realPlates);
-    const snow = smoothstep(0.2, 0.9, u.snowball.mul(1.25).sub(fbm(P.mul(3.0).add(vec3(4.0, 0, 0)), 3).mul(0.25)).sub(float(1).sub(lat).mul(0.18)));
+    const snow = float(0).toVar();
+    If(u.snowball.greaterThan(0.001), () => {
+      snow.assign(smoothstep(0.2, 0.9, u.snowball.mul(1.25).sub(fbm(P.mul(3.0).add(vec3(4.0, 0, 0)), 3).mul(0.25)).sub(float(1).sub(lat).mul(0.18))));
+    });
     const ice = clamp(max(max(polar, nhSheet), max(max(pIce, ant), snow)), 0, 1).toVar();
-    const iceCol = mix(vec3(0.62, 0.7, 0.78), vec3(0.9, 0.93, 0.96), smoothstep(-0.2, 0.3, rn));
+    const iceCol = mix(vec3(0.7, 0.77, 0.84), vec3(0.93, 0.95, 0.98), smoothstep(-0.25, 0.25, rn));
 
     // ── lava / crust ──
     const emission = vec3(0).toVar();
     const crustDark = float(0).toVar();
     If(u.lava.greaterThan(0.001), () => {
       const drift = vec3(u.time.mul(0.01), 0, u.time.mul(-0.007));
-      const pw = P.mul(4.5).add(fbm(P.mul(2.0).add(drift), 3).mul(0.6));
+      // Organic plate shapes: strongly warped cellular noise.
+      const wv = vec3(
+        fbm(P.mul(1.7).add(drift), 3),
+        fbm(P.mul(1.9).add(vec3(5.1, 1.7, 3.3)).add(drift), 3),
+        fbm(P.mul(2.1).add(vec3(2.4, 7.2, 4.1)), 3),
+      );
+      const pw = P.mul(3.4).add(wv.mul(0.7));
       const cells = mx_worley_noise_vec2(pw);
-      const edge = cells.y.sub(cells.x); // 0 on cell boundaries
-      const fine = mx_worley_noise_vec2(pw.mul(3.1).add(vec3(1.3, 0, 0)));
-      const edgeFine = fine.y.sub(fine.x);
-      // Crust plates grow from cell centres outward as the surface cools; cracks stay hot.
+      const edge = cells.y.sub(cells.x); // 0 on plate boundaries
+      const fine = mx_worley_noise_vec2(pw.mul(3.7).add(vec3(1.3, 0, 0)));
+      const fineEdge = fine.y.sub(fine.x);
+      const wN = fbm(P.mul(5.0).add(vec3(3, 1, 2)), 2).mul(0.5).add(0.5);
+      const crackW = u.crackWidth.mul(float(0.25).add(wN.mul(0.9)));
       const cover = u.crustCover;
-      const crustMask = smoothstep(u.crackWidth, u.crackWidth.add(0.08), edge.mul(float(0.6).add(cover.mul(1.4))))
-        .mul(smoothstep(0.0, 0.25, cover.mul(1.2).sub(fbm(P.mul(3.0).add(drift.mul(2)), 3).mul(0.4))))
-        .mul(smoothstep(0.02, 0.06, edgeFine.add(float(1).sub(cover).mul(0.04))).mul(0.5).add(0.5));
-      const flow = fbm(P.mul(7.0).add(drift.mul(3)), 3).mul(0.5).add(0.5);
+      // Which regions have solidified: a slowly varying field compared against the cover fraction.
+      const solid = smoothstep(-0.12, 0.12, cover.mul(2.2).sub(1.1).add(fbm(P.mul(2.3).add(vec3(9, 2, 6)), 3).mul(0.9)));
+      const plate = smoothstep(crackW, crackW.add(0.05), edge);
+      const fineCrack = float(1).sub(smoothstep(0.0, 0.03, fineEdge)).mul(float(1).sub(cover).mul(0.7).add(0.3));
+      const crustMask = plate.mul(solid).mul(float(1).sub(fineCrack.mul(0.85))).toVar();
+      // Melt temperature: convective churn, cooler skins drifting on it, hottest along open cracks.
+      const flow = fbm(P.mul(6.0).add(drift.mul(3)), 4);
+      const skin = smoothstep(0.05, 0.35, fbm(P.mul(11.0).add(drift.mul(5)).add(vec3(4, 4, 4)), 3));
       const crack = float(1).sub(crustMask);
-      // Temperature (K): hottest melt in the cracks, cooler glowing skin elsewhere.
-      const logT = u.lavaLogT.add(flow.mul(0.08)).sub(float(1).sub(crack).mul(0.25)).add(crack.mul(0.03));
+      // Open melt convects in cells: hot upwelling centres, cooler dark lanes where it sinks.
+      const gran = smoothstep(0.0, 0.4, edge);
+      const lane = float(1).sub(smoothstep(0.0, 0.07, edge));
+      const molten = float(1).sub(cover);
+      const logT = u.lavaLogT.add(flow.mul(0.07))
+        .sub(skin.mul(0.04))
+        .add(gran.sub(0.5).mul(0.16).mul(molten))
+        .sub(lane.mul(0.14).mul(molten))
+        .sub(crustMask.mul(0.3));
       const T = pow(float(10), logT);
       const radiance = pow(T.div(u.lavaRefK), 4).mul(u.glowGain);
-      const glow = blackbodyNode(o.lut, logT).mul(radiance).mul(crack.mul(0.9).add(0.1).mul(float(1).sub(crustMask.mul(0.97))));
+      // Blackbody colour, saturated ×1.6 about its luminance: AgX tone mapping desaturates bright emitters,
+      // and molten rock should still read as orange on screen.
+      const bb = blackbodyNode(o.lut, logT);
+      const bbL = dot(bb, vec3(0.2126, 0.7152, 0.0722));
+      const glow = mix(vec3(bbL), bb, 1.6).max(0).mul(radiance).mul(crack.mul(0.97).add(0.03));
       // Lava only where there is land: the first oceans quench it.
       emission.addAssign(glow.mul(u.lava).mul(land));
       crustDark.assign(crustMask.mul(u.lava).mul(land));
@@ -502,23 +529,26 @@ export function createPlanet(o: PlanetOptions): Planet {
     // Hadean hotspots: scattered volcanic glows.
     If(u.hotspots.greaterThan(0.001), () => {
       const hs = mx_worley_noise_vec2(P.mul(7.0).add(vec3(11.0, 3.0, 5.0)));
-      const spot = smoothstep(0.12, 0.0, hs.x).mul(smoothstep(0.35, 0.6, mx_noise_float(P.mul(3.0).add(vec3(2.0, 8.0, 1.0)))));
+      const spot = float(1).sub(smoothstep(0.0, 0.12, hs.x)).mul(smoothstep(0.35, 0.6, mx_noise_float(P.mul(3.0).add(vec3(2.0, 8.0, 1.0)))));
       emission.addAssign(blackbodyNode(o.lut, float(3.15)).mul(spot.mul(u.hotspots).mul(1.4).mul(land.mul(0.85).add(0.15))));
     });
 
     // ── impact (flash, glowing scar, expanding ejecta ring) ──
     const cosA = dot(P, u.impactDir);
     const ang = clamp(float(1).sub(cosA), 0, 2);
-    const flash = exp(ang.mul(-900)).mul(30).add(exp(ang.mul(-60)).mul(2.5)).mul(u.impactFlash);
-    const ringR = u.impactAge.mul(0.35);
-    const ring = exp(ang.sub(ringR).mul(ang.sub(ringR)).mul(-6000)).mul(smoothstep(0.0, 0.05, u.impactAge)).mul(float(1).sub(u.impactAge));
+    const flash = exp(ang.mul(-700)).mul(12).add(exp(ang.mul(-50)).mul(1.2)).mul(u.impactFlash);
+    const ringR = u.impactAge.mul(0.3);
+    const fadeR = float(1).sub(u.impactAge);
+    const ring = exp(ang.sub(ringR).mul(ang.sub(ringR)).mul(-3500)).mul(smoothstep(0.0, 0.05, u.impactAge)).mul(fadeR.mul(fadeR));
     const scar = exp(ang.mul(-400)).mul(smoothstep(0.0, 0.02, u.impactAge)).mul(float(1).sub(smoothstep(0.1, 0.8, u.impactAge)));
-    emission.addAssign(blackbodyNode(o.lut, float(3.6)).mul(flash.add(ring.mul(3.0)).add(scar.mul(4.0))));
+    emission.addAssign(blackbodyNode(o.lut, float(3.6)).mul(flash.add(scar.mul(4.0))));
+    // The ejecta curtain: re-entering debris heats the sky orange-red as it spreads around the globe.
+    emission.addAssign(blackbodyNode(o.lut, float(3.3)).mul(ring.mul(0.9)));
 
     // ── albedo ──
     const albedo = mix(ocean, landCol, land).toVar();
     albedo.assign(mix(albedo, iceCol, ice));
-    albedo.assign(mix(albedo, vec3(0.035, 0.03, 0.028), crustDark));
+    albedo.assign(mix(albedo, mix(vec3(0.05, 0.045, 0.042), vec3(0.11, 0.1, 0.095), smoothstep(-0.3, 0.3, rn)), crustDark));
     albedo.mulAssign(float(1).sub(u.soot.mul(0.6)));
 
     // ── lighting ──
@@ -665,7 +695,7 @@ export function createPlanet(o: PlanetOptions): Planet {
       const phaseM = float(3 / (8 * Math.PI))
         .mul(float(1).sub(g2).mul(mu.mul(mu).add(1)))
         .div(g2.add(2).mul(pow(float(1).add(g2).sub(g.mul(mu).mul(2)), 1.5)));
-      const gh = float(0.55);
+      const gh = float(0.68);
       const phaseH = float(1 / (4 * Math.PI)).mul(float(1).sub(gh.mul(gh))).div(pow(float(1).add(gh.mul(gh)).sub(gh.mul(mu).mul(2)), 1.5));
       const sun = u.sunColour.mul(u.sunIntensity).mul(u.atmoGain);
       const ins = sumR

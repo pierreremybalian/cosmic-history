@@ -27,7 +27,7 @@ import {
 import type { Node } from 'three/webgpu';
 
 export const STRANDS = {
-  perGroup: 6,
+  perGroup: 4,
   groups: 3, // 0 gravity, 1 strong, 2 electroweak
   tubularSegments: 160,
   radialSegments: 6,
@@ -140,8 +140,13 @@ export function createForceStrands(): ForceStrands {
     const lift = u.axisB.mul(u.gravityLift.mul(gPeel).negate().add(u.strongLift.mul(sPeel)));
     const base = u.centre.add(radial.mul(ringR)).add(lift);
     // Braid: every strand winds round the arc; each group sits at its own third of the circle.
-    const ang = iF.mul(2.39996).add(group.mul(2.0944)).add(x.mul(u.twist)).add(u.phase.mul(float(0.6).add(seed.mul(0.5))));
-    const rb = u.braidRadius.mul(float(0.7).add(k.mul(0.07)));
+    // Loose, organic braid: each strand has its own twist rate, radius and a slow meander.
+    const ang = iF.mul(2.39996)
+      .add(group.mul(2.0944))
+      .add(x.mul(u.twist).mul(float(0.8).add(seed.mul(0.4))))
+      .add(u.phase.mul(float(0.6).add(seed.mul(0.5))));
+    const meander = sin(x.mul(float(5).add(seed.mul(4))).add(u.phase.mul(0.5)).add(seed.mul(9))).mul(0.25);
+    const rb = u.braidRadius.mul(float(0.65).add(seed.mul(0.5)).add(meander));
     const braid = radial.mul(cos(ang)).add(u.axisB.mul(sin(ang))).mul(rb);
     return base.add(braid);
   };

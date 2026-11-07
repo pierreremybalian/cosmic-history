@@ -1,7 +1,7 @@
 // Screenshot harness for scenes and the full page (used for self-testing and stills).
 // Usage:
 //   node scripts/shoot.ts --url "http://localhost:4330/dev/scenes/?scene=qgp&local=0.5&ui=0" --out shot.png
-//   node scripts/shoot.ts --scene qgp --locals 0.1,0.5,0.9 --outdir scratch/shots [--webgl] [--base http://localhost:4330] [--leak]
+//   node scripts/shoot.ts --scene qgp --locals 0.1,0.5,0.9 --outdir scratch/shots [--webgl] [--base …] [--leak] [--chapter <id>]
 //   node scripts/shoot.ts --page 0,0.3,0.6 --outdir scratch/shots   (full page at scroll progress values)
 // Waits for window.__ready (dev route) and prints console errors. Exit code 1 on page errors or scene failure.
 import { chromium } from 'playwright';
@@ -27,8 +27,9 @@ if (opt('scene')) {
   const scene = opt('scene')!;
   const outdir = opt('outdir', 'scratch/shots')!;
   for (const l of (opt('locals', '0.1,0.5,0.9') ?? '').split(',')) {
-    const u = `${base}/dev/scenes/?scene=${scene}&local=${l}&ui=0&tier=${tier}&frames=${opt('frames', '45')}${webgl ? '&webgl=1' : ''}`;
-    jobs.push({ url: u, out: join(outdir, `${scene}-${l}${webgl ? '-webgl' : ''}.png`) });
+    const chapter = opt('chapter');
+    const u = `${base}/dev/scenes/?scene=${scene}&local=${l}&ui=0&tier=${tier}&frames=${opt('frames', '45')}${webgl ? '&webgl=1' : ''}${chapter ? `&chapter=${chapter}` : ''}`;
+    jobs.push({ url: u, out: join(outdir, `${scene}${chapter ? `-${chapter}` : ''}-${l}${webgl ? '-webgl' : ''}.png`) });
   }
 }
 // Full page at given scroll progress values: --page 0,0.25,0.5
@@ -47,7 +48,8 @@ const browser = await chromium.launch({
 });
 let failed = false;
 for (const job of jobs) {
-  const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
   const errors: string[] = [];
   page.on('console', (m) => {
     const t = m.text();
@@ -87,7 +89,7 @@ for (const job of jobs) {
   await page.screenshot({ path: job.out });
   console.log(`${job.out}  (${backend}, ${((Date.now() - t0) / 1000).toFixed(1)} s)${sceneFailed ? '  SCENE FAILED' : ''}${errors.length ? `  ${errors.length} errors` : ''}`);
   if (sceneFailed || errors.length) failed = true;
-  await page.close();
+  await context.close();
 }
 await browser.close();
 process.exit(failed ? 1 : 0);

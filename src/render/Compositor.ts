@@ -1,7 +1,7 @@
 // Blends outgoing and incoming scene targets, then post: bloom → tone map → film grain (HANDOFF §10.4).
 
 import { DataTexture, RenderPipeline, RGBAFormat, type Texture, type WebGPURenderer } from 'three/webgpu';
-import { Fn, If, float, hash, mix, texture, uniform, uv, vec2, vec3, vec4, luminance } from 'three/tsl';
+import { Fn, If, clamp, float, hash, mix, texture, uniform, uv, vec2, vec3, vec4, luminance } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { TransitionKind } from '../time/chapters.ts';
 import type { GlobalUniforms } from './globals.ts';
@@ -66,7 +66,8 @@ export class Compositor {
         .Else(() => {
           col.assign(texB.sample(p));
         });
-      return vec4(col.rgb.mul(uFade), 1);
+      // Clamp guards bloom against NaN/inf from any scene (one bad pixel would black out the frame) and fireflies.
+      return vec4(clamp(col.rgb, 0, 64).mul(uFade), 1);
     })();
 
     this.bloomNode = bloom(composite, POST.bloomStrength, POST.bloomRadius, POST.bloomThreshold);
