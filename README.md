@@ -18,4 +18,4 @@ pnpm build        # static site in dist/
 Dev-only pages: `/dev/scenes/?scene=<id>&local=0.5` (scene smoke test) and `/dev/field/` (field traceability).
 Regenerate fallback stills and the OG image: start `pnpm dev`, then `pnpm stills -- --base http://localhost:4340`.
 
-Live: https://cosmic-history.balian.dev. Deploy: `pnpm deploy` (builds, then `wrangler deploy`: Workers static assets on the Cloudflare account that owns `balian.dev`, custom domain attached by `wrangler.toml`). Note: the Planck CMB map is CC BY-NC 3.0 IGO (non-commercial); see DECISIONS.md.
+Live: https://cosmic-history.balian.dev. Deploy: `pnpm deploy` (builds, then `wrangler deploy`: Workers static assets on the Cloudflare account that owns `balian.dev`; the custom domain is attached by `wrangler.toml`). Note: the Planck CMB map is CC BY-NC 3.0 IGO (non-commercial); see DECISIONS.md.

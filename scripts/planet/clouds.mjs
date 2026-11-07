@@ -1,5 +1,6 @@
 // Offline: cloud opacity from NASA Blue Marble 2002 (public domain): composite with clouds vs the cloud-free base.
 import { createRequire } from 'node:module';
+// sharp ships with Astro (image service); resolve it from Astro's own dependencies.
 const require = createRequire(import.meta.url);
 const sharp = createRequire(require.resolve('astro/package.json'))('sharp');
 const [dir, out, preview] = process.argv.slice(2);

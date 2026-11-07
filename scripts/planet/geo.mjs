@@ -5,6 +5,7 @@
 import { readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+// sharp ships with Astro (image service); resolve it from Astro's own dependencies.
 const require = createRequire(import.meta.url);
 const sharp = createRequire(require.resolve('astro/package.json'))('sharp');
 
