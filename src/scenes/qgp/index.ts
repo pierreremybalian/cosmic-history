@@ -53,6 +53,10 @@ export const params = {
   bathLength: 11,
   bathIntensity: 0.45,
   bathFloor: 0.02,
+  /** Depth over which the glow integrates (shorter = more contrast in the turbulence). */
+  bathFog: 5.8,
+  /** White-hot lift of the glow in the hot phase (0 = pure blackbody LUT hue). */
+  hotTint: 0,
   /** World size of the primordial-field tile used for the reheating ripples. */
   rippleScale: 9,
   /** Hot currents shared by the glow and the particles. */
@@ -192,7 +196,7 @@ export default (): CosmicScene => {
           ),
       });
       bath.uniforms.floor.value = params.bathFloor;
-      bath.uniforms.fog.value = params.fog * 1.6;
+      bath.uniforms.fog.value = params.bathFog;
       u.curScale.value = params.currents.scale;
       u.curSharp.value = params.currents.sharp;
       u.curVoids.value = params.currents.voids;
@@ -237,7 +241,9 @@ export default (): CosmicScene => {
       bath.uniforms.intensity.value =
         params.bathIntensity * (0.4 + 0.6 * fill) * cooling * (1 + 10 * u.flash.value) * (1 - 0.5 * u.gold.value);
       // The electroweak flash runs white-hot (tint lifts red/green over the saturated blue blackbody).
-      bath.uniforms.tint.value.setRGB(1 + 1.6 * u.flash.value, 1 + 0.9 * u.flash.value, 1);
+      // White-hot while the soup is hottest (tint lifts red/green over the saturated blue LUT), and in the flash.
+      const hot = params.hotTint * fill * (1 - 0.7 * higgs) + u.flash.value;
+      bath.uniforms.tint.value.setRGB(1 + 1.6 * hot, 1 + 0.9 * hot, 1);
 
       // Camera: slow push through the soup; drift rides the massive clock so it, too, gains inertia.
       const c = params.camera;

@@ -122,8 +122,8 @@ const params = {
     galaxy: [19.7, 20.6, 23.9, 24.5],
     sunMarker: [20.4, 21.0, 22.3, 22.9],
     localGroup: [21.9, 22.7, 24.05, 24.6],
-    localVolume: [22.6, 23.2, 24.3, 24.85],
-    web: [24.0, 24.6, 25.9, 26.6],
+    localVolume: [22.6, 23.2, 24.45, 24.95],
+    web: [23.75, 24.3, 25.9, 26.6],
     haze: [25.0, 25.9, 99, 100],
     cmb: [25.95, 26.55, 99, 100],
   } as Record<string, [number, number, number, number]>,
@@ -708,7 +708,7 @@ export default (): CosmicScene => {
       cosmos.uniforms.front.value = vCmb;
       // From inside, the CMB is the whole sky; once outside, its far side dims so the interior reads as depth.
       const outside = smoothstep(26.6, 27.05, x);
-      cosmos.uniforms.back.value = 0.42 - 0.405 * outside;
+      cosmos.uniforms.back.value = 0.3 - 0.285 * outside;
       cosmos.uniforms.limbPow.value = 3.6 + 2.4 * outside;
       cosmos.uniforms.faceOn.value = 0.008 * (1 - outside) + 0.003;
       cosmos.uniforms.marker.value = smoothstep(26.0, 26.9, x) * (0.8 + 0.2 * Math.sin(elapsed * 0.9));

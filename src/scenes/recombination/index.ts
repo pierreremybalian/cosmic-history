@@ -95,9 +95,9 @@ export const params = {
   fineAmp: 0.75,
   ridge: 0.9,
   warp: 0.15,
-  plasmaContrast: 2.1,
+  plasmaContrast: 2.35,
   /** Extra exposure while the plasma look is on: the fog stays incandescent through the whole era. */
-  plasmaExposure: 1.7,
+  plasmaExposure: 1.35,
   plasmaVar: 1.15,
   ringMid: 1.4,
   ringFine: 3.1,

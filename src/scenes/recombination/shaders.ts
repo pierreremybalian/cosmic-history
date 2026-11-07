@@ -299,7 +299,7 @@ export function createSkyMaterial(o: SkyOptions, u: SkyUniforms): MeshBasicNodeM
         // Acoustic ringing: the body oscillates between the two scales' patterns (cos/sin of a phase that runs with
         // the sound speed and freezes at decoupling), so the texture keeps re-forming like a ringing medium.
         const nRing = bm.mul(u.osc.x).add(bf.mul(u.osc.y));
-        const n = psiA.x.mul(1.7 * 0.35).add(nRing.mul(0.8)).add(grain.mul(u.fineAmp).mul(0.35));
+        const n = psiA.x.mul(1.7 * 0.18).add(nRing.mul(0.85)).add(grain.mul(u.fineAmp).mul(0.35));
         // Thin incandescent sheets where the ringing field crosses zero.
         const sheet = pow(clamp(float(1).sub(abs(nRing).mul(0.9)), 0, 1), 4);
         // Dark-matter wells: smoothed δ (B), only where it is overdense; photons climbing out look cooler.
