@@ -25,7 +25,7 @@ export const ACCURACY_HELP = {
 export const CREDITS: { label: string; text: string; url?: string }[] = [
   {
     label: 'Cosmic microwave background',
-    text: 'Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada. Map: Planck 2018 SMICA (PR3), Planck Legacy Archive.',
+    text: 'ESA and the Planck Collaboration: Planck 2018 SMICA map (PR3, inpainted), Planck Legacy Archive, shown colour mapped. Based on observations obtained with Planck (http://www.esa.int/Planck), an ESA science mission with instruments and contributions directly funded by ESA Member States, NASA, and Canada. Licence: CC BY-NC 3.0 IGO.',
     url: 'https://pla.esac.esa.int/',
   },
   {
