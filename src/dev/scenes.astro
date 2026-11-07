@@ -1,8 +1,8 @@
 ---
 // Scene smoke test (HANDOFF §15): pick a scene, scrub local, FPS + GPU memory, load/unload ×50 leak check.
 // URL params: ?scene=<id>&local=0.5&chapter=<chapterId>&tier=low|medium|high&webgl=1&paused=1&ui=0
-import Base from '../../layouts/Base.astro';
-import { SCENES } from '../../scenes/registry.ts';
+import Base from '../layouts/Base.astro';
+import { SCENES } from '../scenes/registry.ts';
 const ids = Object.keys(SCENES);
 ---
 
@@ -27,8 +27,8 @@ const ids = Object.keys(SCENES);
 </Base>
 
 <script>
-  import { createEngine } from '../../render/renderer.ts';
-  import { $quality, $sceneInfo, $stats, $sceneStatus } from '../../state/store.ts';
+  import { createEngine } from '../render/renderer.ts';
+  import { $quality, $sceneInfo, $stats, $sceneStatus } from '../state/store.ts';
 
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('dev-canvas') as HTMLCanvasElement;
@@ -134,7 +134,7 @@ const ids = Object.keys(SCENES);
         if (i === 2) before = mem();
         const e = engine.manager.load(id);
         await e.promise;
-        e.scene?.update(0.5, (await import('../../physics/cosmology.ts')).globalsAt(1), 0.016, i);
+        e.scene?.update(0.5, (await import('../physics/cosmology.ts')).globalsAt(1), 0.016, i);
         e.scene?.render(e.target);
         engine.manager.unload(id);
         leakOut.textContent = `iteration ${i + 1}/52`;

@@ -59,3 +59,11 @@ Non-obvious choices, deviations from HANDOFF.md, and why. Newest at the bottom o
 - See `scripts/DATA_NOTES.md` for the Planck map pipeline and IllustrisTNG script (TNG needs an API key; the app runs without it, high tier only, off by default — open question 3: not worth the download on medium).
 - Audio: out of scope (open question 4).
 - Mobile nav: horizontal strip at the top, auto-scrolled to keep the marker centred (open question 2).
+
+## Delivery
+
+- **Dev-only routes**: `/dev/scenes` (smoke test: scrub, FPS, GPU memory, load/unload ×52 leak test with 2 warm-up cycles) and `/dev/field` (one slice of the field as ζ, δ, smoothed δ with peaks, and Zel'dovich particles — the traceability check for Phase 5) are injected only under `astro dev`; they are not in `dist/`.
+- **Stills and OG image** are rendered by the real renderer (`pnpm stills` → `public/stills/<chapter>.webp`, `public/og.png`) from a running dev or preview server. They are the no-GPU fallback and appear while a scene is still loading after a long jump.
+- **Fast jumps**: a chapter must be current for 150 ms before its scene initialises, so a nav jump across many chapters does not build every scene on the way.
+- **Accuracy notes** are clamped to three lines in the nav panel; the badge expands the full note.
+- **Planet positions** in the `now` scene follow the visitor's current date (stills drift slightly day to day).

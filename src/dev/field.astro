@@ -2,7 +2,7 @@
 // Traceability check (HANDOFF Phase 5): the same slice of the one primordial field, four ways.
 // ζ (what inflation shows) → linear δ (BBKS) → smoothed δ with halo peaks (first stars, reionization) →
 // Zel'dovich particles in a thin slab at A = 1 (the web in darkAges → now). Fixed seed: identical every load.
-import Base from '../../layouts/Base.astro';
+import Base from '../layouts/Base.astro';
 ---
 
 <Base title="Field traceability" noindex>
@@ -20,7 +20,7 @@ import Base from '../../layouts/Base.astro';
 </Base>
 
 <script>
-  import { DEFAULT_FIELD, generateField, zeldovichParticles, sampleGrid } from '../../shared/fieldCore.ts';
+  import { DEFAULT_FIELD, generateField, zeldovichParticles, sampleGrid } from '../shared/fieldCore.ts';
 
   const status = document.querySelector<HTMLElement>('[data-status]')!;
   const t0 = performance.now();

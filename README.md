@@ -15,4 +15,7 @@ pnpm build        # static site in dist/
 - Rendering: `src/render/` (renderer, scene manager, compositor, quality tiers), scenes in `src/scenes/`.
 - Data: `public/data/` (events, eras, Planck CMB map). Credits and licensing: `scripts/DATA_NOTES.md` and the page footer.
 
-Deploy (Cloudflare Pages): `pnpm deploy`.
+Dev-only pages: `/dev/scenes/?scene=<id>&local=0.5` (scene smoke test) and `/dev/field/` (field traceability).
+Regenerate fallback stills and the OG image: start `pnpm dev`, then `pnpm stills -- --base http://localhost:4340`.
+
+Deploy (Cloudflare Pages): `pnpm deploy`. Note: the Planck CMB map is CC BY-NC 3.0 IGO (non-commercial); see DECISIONS.md.

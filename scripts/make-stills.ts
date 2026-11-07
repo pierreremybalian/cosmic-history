@@ -69,7 +69,7 @@ if (!only || only.includes('og')) {
   const og = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
   await og.goto(`${base}/?clean=hero&tier=high&probe=0${webgl ? '&webgl=1' : ''}`);
   await og.waitForFunction('!!window.__driver && !!window.__engine', null, { timeout: 60000 });
-  const png = await capture(og, 0.003, 6000);
+  const png = await capture(og, 0, 6000);
   writeFileSync(new URL('../public/og.png', import.meta.url), png);
   console.log(`og.png  ${(png.length / 1024).toFixed(0)} KB`);
 }

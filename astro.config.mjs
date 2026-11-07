@@ -4,6 +4,19 @@ import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 
+// Dev-only routes (HANDOFF §15): the scene smoke test and the field traceability page are not shipped.
+/** @type {import('astro').AstroIntegration} */
+const devRoutes = {
+  name: 'dev-routes',
+  hooks: {
+    'astro:config:setup': ({ command, injectRoute }) => {
+      if (command !== 'dev') return;
+      injectRoute({ pattern: '/dev/scenes', entrypoint: './src/dev/scenes.astro' });
+      injectRoute({ pattern: '/dev/field', entrypoint: './src/dev/field.astro' });
+    },
+  },
+};
+
 // Static output for Cloudflare Pages. No SSR adapter, no backend (HANDOFF §1).
 export default defineConfig({
   site: 'https://cosmic-history.pages.dev',
@@ -11,7 +24,7 @@ export default defineConfig({
   trailingSlash: 'always',
   build: { inlineStylesheets: 'auto' },
   devToolbar: { enabled: false },
-  integrations: [mdx(), sitemap({ filter: (page) => !page.includes('/dev/') })],
+  integrations: [devRoutes, mdx(), sitemap({ filter: (page) => !page.includes('/dev/') })],
   vite: {
     plugins: [tailwindcss()],
     // Pre-bundle three up front so the dev server does not re-optimise it mid-session.
