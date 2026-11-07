@@ -1,0 +1,86 @@
+@import 'tailwindcss';
+
+/* Tailwind's default palette is cleared: use only these tokens. */
+@theme {
+  --color-*: initial;
+  --color-void: #020205;
+  --color-ink: #05060b;
+  --color-panel: rgb(10 12 22 / 0.72);
+  --color-line: rgb(190 200 255 / 0.14);
+  --color-line-strong: rgb(190 200 255 / 0.32);
+  --color-fog: #c9cfe6;
+  --color-mute: #8a92b2;
+  --color-paper: #eef0fa;
+  --color-white: #ffffff;
+  --color-glow: #ffd9a0;
+  --color-signal: #8fd0ff;
+
+  --color-cat-spacetime: #b9a4ff;
+  --color-cat-particles: #6fd3ff;
+  --color-cat-elements: #ffc46b;
+  --color-cat-dark: #8f9bb8;
+  --color-cat-structure: #7cf2c1;
+  --color-cat-life: #a6e36a;
+
+  --color-acc-measured: #7cf2c1;
+  --color-acc-simulated: #6fd3ff;
+  --color-acc-modelled: #ffc46b;
+  --color-acc-metaphor: #d59bff;
+
+  --font-serif: 'Newsreader Variable', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Inter Tight Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+
+  --ease-cosmic: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Category colours as plain custom properties (HANDOFF §11.2), mirrored in src/data/schema.ts. */
+:root {
+  --cat-spacetime: var(--color-cat-spacetime);
+  --cat-particles: var(--color-cat-particles);
+  --cat-elements: var(--color-cat-elements);
+  --cat-dark: var(--color-cat-dark);
+  --cat-structure: var(--color-cat-structure);
+  --cat-life: var(--color-cat-life);
+  --vh-per-weight: 60svh;
+  --rail-w: 15rem;
+  color-scheme: dark;
+}
+
+html {
+  background: var(--color-void);
+  color: var(--color-fog);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: clip;
+}
+
+::selection {
+  background: rgb(143 208 255 / 0.35);
+  color: var(--color-white);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

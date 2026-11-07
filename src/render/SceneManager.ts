@@ -1,0 +1,205 @@
+// Loads, preloads and disposes scenes (HANDOFF §10.3). Keeps active + previous + next initialised.
+// Each live scene owns a HalfFloat render target (§10.4). A scene that fails to init is replaced by its still.
+
+import {
+  HalfFloatType,
+  LinearFilter,
+  Mesh,
+  MeshBasicNodeMaterial,
+  OrthographicCamera,
+  PlaneGeometry,
+  RenderTarget,
+  Scene,
+  SRGBColorSpace,
+  type Texture,
+} from 'three/webgpu';
+import { texture, uv, vec4 } from 'three/tsl';
+import { SCENES } from '../scenes/registry.ts';
+import { chapterForScene } from '../scenes/sceneRange.ts';
+import type { CosmicScene, RenderContext } from '../scenes/types.ts';
+import { $sceneStatus } from '../state/store.ts';
+import { CHAPTERS } from '../time/chapters.ts';
+
+export interface SceneEntry {
+  id: string;
+  scene: CosmicScene | null;
+  status: 'loading' | 'ready' | 'failed';
+  target: RenderTarget;
+  /** Seconds since ready (for fade-in). */
+  readyAt: number;
+  /** Reduced-motion: key of the frame already rendered into target. */
+  heldKey: string | null;
+  promise: Promise<void>;
+}
+
+export class SceneManager {
+  private readonly entries = new Map<string, SceneEntry>();
+  private width = 1;
+  private height = 1;
+  private dpr = 1;
+  private disposed = false;
+  constructor(private readonly ctx: RenderContext) {}
+
+  setContext(patch: Partial<RenderContext>): void {
+    Object.assign(this.ctx, patch);
+  }
+
+  get(id: string): SceneEntry | undefined {
+    return this.entries.get(id);
+  }
+
+  /** The entry if it is ready to render. */
+  ready(id: string): SceneEntry | null {
+    const e = this.entries.get(id);
+    return e && e.scene && e.status !== 'loading' ? e : null;
+  }
+
+  load(id: string, now = performance.now() / 1000): SceneEntry {
+    const hit = this.entries.get(id);
+    if (hit) return hit;
+    const target = new RenderTarget(Math.max(1, this.width), Math.max(1, this.height), {
+      type: HalfFloatType,
+      depthBuffer: true,
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+    });
+    const entry: SceneEntry = {
+      id,
+      scene: null,
+      status: 'loading',
+      target,
+      readyAt: now,
+      heldKey: null,
+      promise: Promise.resolve(),
+    };
+    $sceneStatus.setKey(id, 'loading');
+    entry.promise = (async () => {
+      try {
+        const loader = SCENES[id];
+        if (!loader) throw new Error(`unknown scene ${id}`);
+        const mod = await loader();
+        const scene = mod.default();
+        await scene.init(this.ctx);
+        if (this.disposed || this.entries.get(id) !== entry) {
+          scene.dispose();
+          return;
+        }
+        scene.resize(this.width, this.height, this.dpr);
+        entry.scene = scene;
+        entry.status = 'ready';
+        entry.readyAt = performance.now() / 1000;
+        $sceneStatus.setKey(id, 'ready');
+      } catch (err) {
+        console.error(`[scene ${id}] init failed`, err);
+        if (this.entries.get(id) !== entry) return;
+        entry.scene = await createStillScene(this.ctx, id).catch(() => null);
+        entry.scene?.resize(this.width, this.height, this.dpr);
+        entry.status = 'failed';
+        entry.readyAt = performance.now() / 1000;
+        $sceneStatus.setKey(id, 'failed');
+      }
+    })();
+    this.entries.set(id, entry);
+    return entry;
+  }
+
+  unload(id: string): void {
+    const e = this.entries.get(id);
+    if (!e) return;
+    this.entries.delete(id);
+    $sceneStatus.setKey(id, undefined as unknown as 'ready'); // remove key
+    try {
+      e.scene?.dispose();
+    } catch (err) {
+      console.error(`[scene ${id}] dispose failed`, err);
+    }
+    e.target.dispose();
+  }
+
+  /**
+   * Keep {previous, active, next} chapter scenes. Preload next when local > 0.6 (forward), previous when
+   * local < 0.4 (backward). The previous scene is also needed for the incoming transition.
+   */
+  sync(chapterIndex: number, local: number, direction: number): void {
+    const cur = CHAPTERS[chapterIndex]!;
+    const prev = CHAPTERS[chapterIndex - 1];
+    const next = CHAPTERS[chapterIndex + 1];
+    const keep = new Set<string>([cur.sceneId]);
+    this.load(cur.sceneId);
+    if (prev && (local < cur.transitionSpan || (direction < 0 && local < 0.4) || this.entries.has(prev.sceneId))) {
+      keep.add(prev.sceneId);
+      if (local < cur.transitionSpan || (direction < 0 && local < 0.4)) this.load(prev.sceneId);
+    }
+    if (next && ((direction >= 0 && local > 0.6) || this.entries.has(next.sceneId))) {
+      keep.add(next.sceneId);
+      if (direction >= 0 && local > 0.6) this.load(next.sceneId);
+    }
+    for (const id of [...this.entries.keys()]) if (!keep.has(id)) this.unload(id);
+  }
+
+  /** Single-scene mode (dev route): keep only this one. */
+  only(id: string): SceneEntry {
+    for (const k of [...this.entries.keys()]) if (k !== id) this.unload(k);
+    return this.load(id);
+  }
+
+  resize(width: number, height: number, dpr: number): void {
+    this.width = width;
+    this.height = height;
+    this.dpr = dpr;
+    for (const e of this.entries.values()) {
+      e.target.setSize(width, height);
+      e.heldKey = null;
+      e.scene?.resize(width, height, dpr);
+    }
+  }
+
+  disposeAll(): void {
+    for (const id of [...this.entries.keys()]) this.unload(id);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.disposeAll();
+  }
+
+  get liveIds(): string[] {
+    return [...this.entries.keys()];
+  }
+}
+
+/** Fallback: the chapter's still image as a full-frame quad (§10.3, §10.6). */
+async function createStillScene(ctx: RenderContext, sceneId: string): Promise<CosmicScene> {
+  const chapterId = chapterForScene(sceneId);
+  const url = `/stills/${chapterId}.webp`;
+  let tex: Texture | null = null;
+  try {
+    tex = await ctx.assets.texture(url, { colorSpace: SRGBColorSpace, mipmaps: false });
+  } catch {
+    tex = null;
+  }
+  const scene = new Scene();
+  const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const mat = new MeshBasicNodeMaterial();
+  mat.colorNode = tex ? texture(tex, uv()) : vec4(0.02, 0.02, 0.04, 1);
+  const quad = new Mesh(new PlaneGeometry(2, 2), mat);
+  scene.add(quad);
+  return {
+    id: `${sceneId}:still`,
+    range: [0, 0],
+    accuracy: 'metaphor',
+    accuracyNote: 'Still image shown because this scene could not start on your device.',
+    async init() {},
+    update() {},
+    render(target) {
+      ctx.renderer.setRenderTarget(target);
+      ctx.renderer.render(scene, camera);
+    },
+    resize() {},
+    dispose() {
+      quad.geometry.dispose();
+      mat.dispose();
+      if (tex) ctx.assets.release(url);
+    },
+  };
+}
