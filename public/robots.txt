@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /dev/
 
-Sitemap: https://cosmic-history.pages.dev/sitemap-index.xml
+Sitemap: https://cosmic-history.balian.dev/sitemap-index.xml

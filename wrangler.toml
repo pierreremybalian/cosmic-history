@@ -1,4 +1,12 @@
+# Static site on Cloudflare Workers (static assets). Pages projects now deploy through Workers (DECISIONS.md).
 name = "cosmic-history"
 compatibility_date = "2026-10-01"
-compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = "./dist"
+workers_dev = false
+preview_urls = false
+
+routes = [{ pattern = "cosmic-history.balian.dev", custom_domain = true }]
+
+[assets]
+directory = "./dist"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"

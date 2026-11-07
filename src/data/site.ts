@@ -1,11 +1,14 @@
 // Site-wide copy and SEO.
 export const SITE = {
   name: 'Cosmic History',
-  title: 'Cosmic History — 13.8 billion years in one scroll',
+  url: 'https://cosmic-history.balian.dev',
+  title: 'Cosmic History — From the Big Bang to today, in 17 stages',
   description:
-    'A scroll-driven 3D journey from the Planck epoch to today. Every frame is computed from real cosmology, and every scene says how sure we are.',
+    'A guided 3D journey through 13.8 billion years, from the Big Bang to today. Scroll through 17 stages, each computed from real cosmology and explained as you go.',
   ogImage: '/og.png',
+  ogImageAlt: 'Cosmic History: the title card over a glowing web of primordial filaments.',
   themeColor: '#020205',
+  author: 'Balian Design',
 };
 
 export const ACCURACY_LABEL = {

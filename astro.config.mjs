@@ -19,7 +19,7 @@ const devRoutes = {
 
 // Static output for Cloudflare Pages. No SSR adapter, no backend (HANDOFF §1).
 export default defineConfig({
-  site: 'https://cosmic-history.pages.dev',
+  site: 'https://cosmic-history.balian.dev',
   output: 'static',
   trailingSlash: 'always',
   build: { inlineStylesheets: 'auto' },

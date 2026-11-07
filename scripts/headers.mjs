@@ -17,12 +17,13 @@ for (const f of walk(dist).filter((f) => f.endsWith('.html'))) {
 
 const csp = [
   "default-src 'self'",
-  `script-src 'self' ${[...hashes].join(' ')}`,
+  // Cloudflare Web Analytics is injected at the edge on balian.dev (beacon script + reporting endpoint).
+  `script-src 'self' https://static.cloudflareinsights.com ${[...hashes].join(' ')}`,
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self'",
+  "connect-src 'self' https://cloudflareinsights.com",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",

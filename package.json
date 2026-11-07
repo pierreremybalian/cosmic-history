@@ -20,8 +20,8 @@
     "format:check": "prettier --check .",
     "globals": "node scripts/print-globals.ts",
     "stills": "node scripts/make-stills.ts",
-    "deploy": "pnpm build && wrangler pages deploy dist --project-name cosmic-history --branch main",
-    "pages:dev": "pnpm build && wrangler pages dev dist --port 8792"
+    "deploy": "pnpm build && wrangler deploy",
+    "preview:worker": "pnpm build && wrangler dev --port 8792"
   },
   "dependencies": {
     "@astrojs/mdx": "8.1.1",

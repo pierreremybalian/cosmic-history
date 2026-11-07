@@ -236,6 +236,11 @@ const titles = chapters.map((ch) => ch.data.title);
   :global(html.clean .credits) {
     visibility: hidden !important;
   }
+  /* Share image: title card only, no scroll or keyboard hints. */
+  :global(html.clean .hero-hint),
+  :global(html.clean .hero-keys) {
+    display: none !important;
+  }
   :global(html.clean .cosmos .veil) {
     display: none;
   }

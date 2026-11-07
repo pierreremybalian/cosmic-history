@@ -1,6 +1,6 @@
 # Cosmic History
 
-Scroll-driven 3D journey from the Planck epoch to today. Astro 7, vanilla TypeScript islands, three.js r186 WebGPU renderer with TSL shaders (automatic WebGL2 fallback), nanostores, Lenis. Static output on Cloudflare Pages. `HANDOFF.md` is the spec; `DECISIONS.md` logs deviations; `SCENES.md` is the scene authoring guide.
+Scroll-driven 3D journey from the Planck epoch to today. Astro 7, vanilla TypeScript islands, three.js r186 WebGPU renderer with TSL shaders (automatic WebGL2 fallback), nanostores, Lenis. Static output served by Cloudflare Workers static assets at https://cosmic-history.balian.dev (`pnpm deploy`). `HANDOFF.md` is the spec; `DECISIONS.md` logs deviations; `SCENES.md` is the scene authoring guide.
 
 ## Dev
 - `pnpm dev` (port 4340). Scene harness: `/dev/scenes/?scene=<id>&local=0.5` (slider, FPS, GPU memory, load/unload ×50 leak test).
