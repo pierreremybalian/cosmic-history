@@ -132,7 +132,8 @@ export interface PlanetUniforms {
   atmoTop: FU; // atmosphere thickness / radius
   atmoGain: FU; // overall in-scatter multiplier (1 = physical)
   // Surface: oceans and land
-  seaLevel: FU; // added to the land threshold (positive floods land)
+  seaLevel: FU; // added to the land threshold (positive floods land); noise plates only
+  seaRiseM: FU; // global sea level relative to today, metres: floods or drains real terrain (real geography)
   crust: FU; // continental crust: 0 = a few islands, 1 = modern continents (noise plates)
   realPlates: FU; // 0 = noise plates, 1 = real geography
   oceanDeep: CU;
@@ -183,7 +184,7 @@ export interface PlanetOptions {
   quality: QualityTier;
   lut: DataTexture;
   /** Real geography (life scene): land colour + two RGBA plate masks. Omit for a noise-only planet. */
-  geography?: { colour?: Texture; platesA?: Texture; platesB?: Texture; clouds?: Texture } | null;
+  geography?: { colour?: Texture; platesA?: Texture; platesB?: Texture; clouds?: Texture; elevation?: Texture } | null;
   atmosphere?: boolean;
   clouds?: boolean;
 }
@@ -227,6 +228,11 @@ function dirToUv(q: V3): V2 {
 }
 
 const LN2 = Math.LN2;
+/** Elevation texture decode (scripts/planet/elevation.py): metres = R × 510 − 150. */
+const ELEV_MIN_M = -150;
+const ELEV_RANGE_M = 510;
+/** Land-field units per metre of elevation: 100 m of flooding reads as a shallow shelf sea (h ≈ −0.04). */
+const TOPO_SCALE = 0.0004;
 
 // ── Atmosphere unit conversion ─────────────────────────────────────────────────
 
@@ -271,6 +277,7 @@ export function createPlanet(o: PlanetOptions): Planet {
     atmoTop: mkF(0.025),
     atmoGain: mkF(1),
     seaLevel: mkF(0),
+    seaRiseM: mkF(0),
     crust: mkF(1),
     realPlates: mkF(0),
     oceanDeep: mkC(0.005, 0.02, 0.06),
@@ -394,6 +401,7 @@ export function createPlanet(o: PlanetOptions): Planet {
   const tColour = geo?.colour ? texture(geo.colour) : null;
   const tA = geo?.platesA ? texture(geo.platesA) : null;
   const tB = geo?.platesB ? texture(geo.platesB) : null;
+  const tE = geo?.elevation ? texture(geo.elevation) : null;
 
   // Vertex displacement (molten / cratered young Earth). Pattern frame = local unit sphere.
   const pLocal = positionLocal.normalize();
@@ -412,6 +420,7 @@ export function createPlanet(o: PlanetOptions): Planet {
       hN.assign(noiseLand(P));
     });
     const hR = float(-1).toVar();
+    const elevM = float(-4000).toVar();
     const photo = vec3(0).toVar();
     const antarctic = float(0).toVar();
     if (tColour && tA && tB) {
@@ -419,6 +428,9 @@ export function createPlanet(o: PlanetOptions): Planet {
         const sum = float(0).toVar();
         const wsum = float(0).toVar();
         const colAcc = vec3(0).toVar();
+        // The plate this point belongs to (largest mask value, reaching ~7° offshore): its frame reads elevation.
+        const cBest = float(0).toVar();
+        const stBest = vec2(0).toVar();
         // Mip level from the continuous direction derivative (avoids the atan seam).
         const lod = log2(max(length(fwidth(P)).mul(2048 / (Math.PI * 2)), 1e-4));
         for (let i = 0; i < REAL_PLATES; i++) {
@@ -427,17 +439,39 @@ export function createPlanet(o: PlanetOptions): Planet {
           const m = (i < 4 ? tA : tB).sample(st).level(float(0));
           const c = i % 4 === 0 ? m.r : i % 4 === 1 ? m.g : i % 4 === 2 ? m.b : m.a;
           sum.addAssign(c);
-          const w = smoothstep(0.25, 0.6, c).add(1e-4);
+          stBest.assign(select(c.greaterThan(cBest), st, stBest));
+          cBest.assign(max(cBest, c));
+          // Offshore the c² term lets the nearest plate colour exposed shelves (glacial low stands).
+          const w = smoothstep(0.25, 0.6, c).add(c.mul(c).mul(0.05)).add(1e-5);
           wsum.addAssign(w);
           colAcc.addAssign(tColour.sample(st).level(lod).rgb.mul(w));
           if (i === 6) antarctic.assign(smoothstep(0.45, 0.6, c));
         }
         hR.assign(sum.sub(0.5).mul(0.9));
         photo.assign(colAcc.div(wsum));
+        if (tE) {
+          const code = tE.sample(stBest).level(float(0)).r;
+          elevM.assign(select(cBest.greaterThan(0.02), code.mul(ELEV_RANGE_M).add(ELEV_MIN_M), float(-4000)));
+        }
       });
     }
     const coast = fbm(P.mul(9.0).add(vec3(3.1, 7.7, 1.3)), coastOct).mul(0.07);
     const h = mix(hN, hR, u.realPlates).add(coast).sub(u.seaLevel).toVar();
+    if (tE) {
+      // Sea level: today's terrain flooded (high stands) or drained (glacial low stands) to the level of the time.
+      // Coast and depth come from elevation; a little coast noise keeps the new shorelines from looking traced.
+      If(u.realPlates.greaterThan(0.001).and(abs(u.seaRiseM).greaterThan(0.5)), () => {
+        const hT = elevM.sub(u.seaRiseM).mul(TOPO_SCALE).add(coast.mul(0.15));
+        // High stand: lower land and the strip just offshore to the flooded terrain; open ocean keeps its shading
+        // (the elevation map stops at −150 m, so it cannot say how deep the old shelves became).
+        const flood = smoothstep(0, 15, u.seaRiseM).mul(u.realPlates).mul(smoothstep(-0.04, -0.005, h));
+        h.assign(mix(h, min(h, hT), flood));
+        // Low stand: raise only terrain within ~30 m of the new shoreline or above it (exposed shelves).
+        const near = smoothstep(u.seaRiseM.sub(30), u.seaRiseM.sub(5), elevM);
+        const drain = smoothstep(0, 15, u.seaRiseM.negate()).mul(u.realPlates);
+        h.assign(mix(h, max(h, mix(float(-1), hT, near)), drain));
+      });
+    }
     const land = smoothstep(-0.006, 0.006, h).toVar();
 
     // ── ocean ──

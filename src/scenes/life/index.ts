@@ -46,6 +46,8 @@ export const params = {
   /** World direction toward the Sun (fixed; the camera orbits). */
   sunDir: HANDOFF.sunDir,
   sunDistance: 900,
+  /** Sea-level drop at a glacial maximum, metres (LGM ≈ −120 to −130 m; Clark et al. 2009). */
+  glacialDrawdownM: 120,
   /** Sun disc angular radius (rad), ~2× real for legibility. */
   sunAngularRadius: 0.009,
   sunHaloScale: 0.16,
@@ -206,7 +208,8 @@ export default (): CosmicScene => {
     id: 'life',
     range: sceneRange('life'),
     accuracy: 'measured',
-    accuracyNote: "Dates are measured; the planet's appearance is illustrative.",
+    accuracyNote:
+      "Dates are measured; the planet's look is illustrative: today's continents drift on simplified paths, and today's terrain is flooded or drained to each era's estimated sea level (±50 m).",
     colourMapped: false,
     async init(ctx: RenderContext) {
       renderer = ctx.renderer;
@@ -284,7 +287,9 @@ export default (): CosmicScene => {
       // ── surface ──
       pu.crust.value = table(T.crust, L);
       pu.realPlates.value = table(T.realPlates, L);
-      pu.seaLevel.value = table(T.seaLevel, L);
+      // Sea level: the old land-threshold offset shapes the noise continents; real geography floods by elevation.
+      pu.seaLevel.value = table(T.seaLevel, L) * (1 - pu.realPlates.value);
+      pu.seaRiseM.value = L <= 545 ? table(T.seaLevelM, L) : 0;
       pu.oceanDeep.value.setRGB(...tableRGB(T.oceanDeep, L, rgb));
       pu.oceanShallow.value.setRGB(...tableRGB(T.oceanShallow, L, rgb));
       pu.oceanLife.value = table(T.oceanLife, L);
@@ -304,7 +309,7 @@ export default (): CosmicScene => {
       pu.northIce.value = table(T.northIce, L);
       // Glacials: drier, clearer air, lower seas (shelves exposed), sea ice further south.
       pu.cloudCover.value = table(T.cloudCover, L) - 0.12 * glacial;
-      pu.seaLevel.value -= 0.025 * glacial;
+      pu.seaRiseM.value -= params.glacialDrawdownM * glacial;
       pu.iceEdge.value -= 0.06 * glacial;
       pu.time.value = elapsed;
 

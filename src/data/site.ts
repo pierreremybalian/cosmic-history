@@ -55,7 +55,7 @@ export const CREDITS: { label: string; text: string; url?: string }[] = [
   },
   {
     label: 'Earth',
-    text: 'Present-day land colour and clouds from NASA Blue Marble (NASA Earth Observatory); coastlines from Natural Earth 1:50m. Both public domain. Past continents are an illustrative plate reconstruction.',
+    text: 'Present-day land colour and clouds from NASA Blue Marble (NASA Earth Observatory); coastlines from Natural Earth 1:50m; elevation from NOAA ETOPO1 (Amante & Eakins 2009). All public domain. Past continents are an illustrative plate reconstruction, and past seas flood or drain today’s terrain to each era’s estimated sea level.',
     url: 'https://visibleearth.nasa.gov/collection/1484/blue-marble',
   },
   {

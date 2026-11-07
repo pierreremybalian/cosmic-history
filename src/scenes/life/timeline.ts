@@ -222,6 +222,37 @@ export const params = {
     [40, 0.02],
     [0, 0],
   ] as const,
+  /**
+   * Long-term global sea level relative to today (metres) for the Phanerozoic; Myr ago → m. Smoothed from
+   * Haq & Schutter 2008 (Palaeozoic), Haq 2014 and Miller et al. 2005/2020 (Mesozoic–Cenozoic), taking a middle
+   * value where they disagree (Cretaceous peak: Haq ≈ +250, Miller ≈ +75, Müller et al. 2008 ≈ +170). Uncertain by
+   * ±50 m or more. Glacial cycles are added on top in index.ts. Applied to today's terrain (planet.ts).
+   */
+  seaLevelM: [
+    [540, 30],
+    [500, 150],
+    [460, 200], // Ordovician high stand
+    [445, 80], // Hirnantian glaciation
+    [430, 140],
+    [400, 100],
+    [375, 170], // Late Devonian
+    [340, 100],
+    [300, 40], // Late Palaeozoic ice age
+    [252, 0], // Pangaea, end-Permian low
+    [220, 20],
+    [190, 40],
+    [150, 100],
+    [120, 80],
+    [92, 170], // Turonian high stand
+    [70, 110],
+    [66, 100], // K–Pg: Yucatán and Florida under shallow sea
+    [50, 70],
+    [34, 30], // Antarctic ice sheet forms
+    [15, 40],
+    [5, 20],
+    [2.6, 10],
+    [0, 0],
+  ] as const,
   /** Length of day (hours), from tidal rhythmites and growth bands; illustrative before ~2.5 Gyr. */
   dayHours: [
     [4400, 8],

@@ -71,6 +71,14 @@ The owner wanted a guided walkthrough, not an explorer: "no dropdown, no slider"
 - **Accessibility**: the story text stays in the DOM as screen-reader-only sections (the visual layer is `aria-hidden`); stage changes are announced politely. Keyboard ↑/↓/Page keys step one caption at a time.
 - **Longer text** (MDX bodies, "How we know", sources) moved to a "Stage by stage" appendix of `<details>` after the journey.
 
+## Sea level in the life scene (owner request, 2026-11-07)
+
+Before, a uniform offset shrank every coastline by the same distance, so low ground (Yucatán, Florida, the Gulf coastal plain) stayed dry at the K–Pg impact. Now today's terrain is flooded or drained to each era's sea level:
+
+- **Elevation**: NOAA ETOPO1 Ice Surface (public domain) → `geo/elevation.png`, 2048 × 1024, only −150 to +360 m kept (2 m steps; 305 KB). Each fragment reads it in the frame of the plate it belongs to (largest mask value), so flooded areas ride with their continent. One extra texture sample per fragment.
+- **Sea level curve** (`timeline.ts` `seaLevelM`): a smoothed long-term eustatic curve, a middle path between Haq (high: Cretaceous ≈ +250 m) and Miller (low: ≈ +75 m); +100 m at the K–Pg boundary. Glacial maxima subtract 120 m (Clark et al. 2009), exposing shelves at the Last Glacial Maximum.
+- **Limits, stated in the accuracy note**: past terrain was not today's terrain (no Himalaya, the Western Interior Seaway came from subsidence, not just sea level), basins below sea level flood whether or not they connect to the ocean, and flooded open-ocean shelves keep their present shading because the map stops at −150 m.
+
 ## Delivery
 
 - **Dev-only routes**: `/dev/scenes` (smoke test: scrub, FPS, GPU memory, load/unload ×52 leak test with 2 warm-up cycles) and `/dev/field` (one slice of the field as ζ, δ, smoothed δ with peaks, and Zel'dovich particles — the traceability check for Phase 5) are injected only under `astro dev`; they are not in `dist/`.

@@ -189,4 +189,5 @@ Credits page:
 ## Earth geography (life scene)
 
 - `src/scenes/life/geo/*` are built offline by `scripts/planet/geo.mjs` (Natural Earth 1:50m land polygons → per-plate signed-distance masks; NASA Blue Marble 2048 → land colour) and `scripts/planet/clouds.mjs` (Blue Marble cloud map). Both sources are public domain. The scripts use `sharp` (present transitively via Astro) and take the downloaded source files as arguments; see the header of each script.
-- Credit (footer): NASA Blue Marble (NASA Earth Observatory); Natural Earth.
+- `src/scenes/life/geo/elevation.png` is built by `scripts/planet/elevation.py` (venv Python, numpy + Pillow): NOAA ETOPO1 Ice Surface (public domain) fetched at 5 arc-minutes from NOAA CoastWatch ERDDAP as DAP2 binary (cached in `scripts/cache/`, 37 MB), box-filtered and resampled to 2048 × 1024 in the land-colour layout, and encoded as `(metres + 150) / 2` clamped to 0–255 (−150 to +360 m in 2 m steps). Checks printed by the script: Chicxulub ≈ 0 m, central Florida ≈ 40 m, Amsterdam ≈ −2 m.
+- Credit (footer): NASA Blue Marble (NASA Earth Observatory); Natural Earth; NOAA ETOPO1.

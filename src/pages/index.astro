@@ -8,7 +8,8 @@ import { CHAPTERS, CHAPTER_STARTS } from '../time/chapters.ts';
 import { VH_PER_WEIGHT } from '../scroll/driver.ts';
 import { HERO_END, MIN_DWELL_SVH, captionSchedule } from '../story/schedule.ts';
 import { ACCURACY_HELP, ACCURACY_LABEL, CREDITS, SITE } from '../data/site.ts';
-import { AGE_LABEL } from '../time/format.ts';
+import { plainDuration } from '../time/format.ts';
+import { AGE_SECONDS } from '../physics/cosmology.ts';
 import { supHtml } from '../lib/sup.ts';
 
 const entries = await getCollection('chapters');
@@ -61,13 +62,19 @@ const titles = chapters.map((ch) => ch.data.title);
   <Hud />
 
   <header class="hero" data-hero>
-    <p class="hero-kicker">{AGE_LABEL} in one scroll</p>
+    <p class="hero-kicker">
+      <span>{CHAPTERS.length} stages</span><span>{plainDuration(AGE_SECONDS)}</span><span>Planck 2018 physics</span>
+    </p>
     <h1>{SITE.name}</h1>
     <p class="hero-lede">
       A guided journey from the first instant physics can describe to this one. Scroll, and the universe tells its story
       stage by stage.
     </p>
     <p class="hero-hint" aria-hidden="true"><span></span>Scroll to begin</p>
+    <p class="hero-keys">
+      Or page through it: <kbd>↓</kbd> <kbd>PgDn</kbd> <kbd>Space</kbd> next · <kbd>↑</kbd> <kbd>PgUp</kbd> back · <kbd>Home</kbd>
+      <kbd>End</kbd> start / today
+    </p>
   </header>
 
   <main id="story" class="story" data-story style={`height: calc(${totalSvh}svh + 100svh)`}>
@@ -244,11 +251,19 @@ const titles = chapters.map((ch) => ch.data.title);
     pointer-events: none;
   }
   .hero-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0;
     font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--color-glow);
+  }
+  .hero-kicker span:not(:last-child)::after {
+    content: '·';
+    margin: 0 0.8em;
+    color: var(--color-mute);
   }
   .hero h1 {
     font-family: var(--font-serif);
@@ -300,6 +315,34 @@ const titles = chapters.map((ch) => ch.data.title);
     }
   }
 
+  /* Paging directions: desktop only (a fine pointer with hover and room for them). */
+  .hero-keys {
+    display: none;
+    position: absolute;
+    left: max(1.5rem, 7vw);
+    bottom: 2rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    color: var(--color-mute);
+  }
+  @media (hover: hover) and (pointer: fine) and (min-width: 768px) {
+    .hero-keys {
+      display: block;
+    }
+  }
+  .hero-keys kbd {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    margin: 0 0.1rem;
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    color: var(--color-fog);
+    border: 1px solid var(--color-line-strong);
+    border-radius: 0.3rem;
+    background: rgb(255 255 255 / 0.03);
+  }
   .story {
     position: relative;
     z-index: 5;
