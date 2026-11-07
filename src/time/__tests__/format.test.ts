@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GYR_S, KYR_S, MYR_S, YEAR_S } from '../../physics/constants.ts';
 import { AGE_SECONDS } from '../../physics/cosmology.ts';
-import { formatDuration, formatLookback, formatTime, sci } from '../format.ts';
+import { formatDuration, formatLookback, formatTime, plainDuration, plainWhen, sci } from '../format.ts';
 
 describe('format', () => {
   it.each([
@@ -47,4 +47,24 @@ describe('format', () => {
   it('sci rounds mantissa overflow', () => {
     expect(sci(9.99e-10)).toBe('10⁻⁹');
   });
+
+  it.each([
+    [4.2e-39, '4.2 × 10⁻³⁹ seconds'],
+    [1, '1 second'],
+    [20, '20 seconds'],
+    [180, '3 minutes'],
+    [380 * KYR_S, '380,000 years'],
+    [150 * MYR_S, '150 million years'],
+    [3.6 * GYR_S, '3.6 billion years'],
+    [13.79 * GYR_S, '13.8 billion years'],
+  ] as const)('plainDuration(%s) = %s', (s, want) => {
+    expect(plainDuration(s)).toBe(want);
+  });
+
+  it('plainWhen switches to lookback', () => {
+    expect(plainWhen(20)).toBe('20 seconds after the Big Bang');
+    expect(plainWhen(0, { lookback: true, lookbackSeconds: 4.6 * GYR_S })).toBe('4.6 billion years ago');
+    expect(plainWhen(AGE_SECONDS, { lookback: true })).toBe('Today');
+  });
 });
+

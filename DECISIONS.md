@@ -45,7 +45,7 @@ Non-obvious choices, deviations from HANDOFF.md, and why. Newest at the bottom o
 - **Primordial field**: generated in a Web Worker at boot (open question 1), not shipped: 128³ takes ~1.5 s including 250k Zel'dovich particles; a 128³ RGBA16F texture pair is 32 MB on the GPU. **Grid capped at 128³ on high** (256³ would need ~0.5 GB of worker memory and 128 MB of VRAM for no visible gain at our particle counts). Hermitian symmetry comes for free by FFT-ing real white noise. ζ (P ∝ k^(n_s−4)), δ (BBKS, σ₈) and ψ all come from the same noise.
 - **Truncated Zel'dovich**: ψ is Gaussian-smoothed (R = 1.2 Mpc/h; Coles, Melott & Shandarin 1993) in a 100 Mpc/h box. Per particle the deformation-tensor eigenvalues are precomputed so the GPU evaluates ρ/ρ̄ = 1/|Π(1 − Aλᵢ)| (softened past shell crossing). Particle order is shuffled so any prefix is a random subset (tier changes draw fewer).
 - **Growth compression**: every structure scene uses `webAmplitude(a) = D(a)^0.35` (normalised to 1 today) instead of D(a), so the web is visible from the dark ages on and continuous across chapters; the scenes' accuracy notes say so.
-- **Quality**: initial tier from backend + cores + device memory + coarse-pointer, refined by a 1 s probe rendering an 8-octave fBm placeholder at the real resolution. Dynamic drop if the median frame > 22 ms for 3 s; never auto-raise. The user override in the nav re-initialises scenes (and the field if it needs more particles).
+- **Quality**: initial tier from backend + cores + device memory + coarse-pointer, refined by a 1 s probe rendering an 8-octave fBm placeholder at the real resolution. Dynamic drop if the median frame > 22 ms for 3 s; never auto-raise. There is no on-page quality control (see Presentation); `?tier=low|medium|high` forces a tier for testing.
 - **Reduced motion**: each chapter's scene renders once at local 0.5 and is held; transitions become plain crossfades; Lenis smoothing is off; elapsed time stops.
 - **Fallback**: no WebGPU and no WebGL2 → `public/stills/<chapter>.webp` crossfade per chapter; a scene that fails to init shows its still in the compositor.
 
@@ -59,6 +59,17 @@ Non-obvious choices, deviations from HANDOFF.md, and why. Newest at the bottom o
 - See `scripts/DATA_NOTES.md` for the Planck map pipeline and IllustrisTNG script (TNG needs an API key; the app runs without it, high tier only, off by default — open question 3: not worth the download on medium).
 - Audio: out of scope (open question 4).
 - Mobile nav: horizontal strip at the top, auto-scrolled to keep the marker centred (open question 2).
+
+## Presentation (owner feedback, 2026-11-07)
+
+The owner wanted a guided walkthrough, not an explorer: "no dropdown, no slider", explain each stage. This overrides HANDOFF §11.2 (timeline rail, quality selector, accuracy panel).
+
+- **Removed**: the timeline rail with 17 jump labels, the quality `<select>`, the accuracy readout panel and the "Key" toggle (`src/nav/` deleted). Quality is automatic (probe + dynamic drop).
+- **Narration** (`src/story/`): one caption on screen at a time, anchored lower left. Each stage opens with an intro card (stage number, time span, title, one-line summary, and the scene's accuracy note), then its beats. Beats appear at their `local` so text still lands on the visual it describes; `captionSchedule` only pushes a beat later when the previous caption would get less than 32 svh of scroll, and pulls back at a chapter's end (tested).
+- **Orientation without controls**: a 2 px progress line with stage ticks (not interactive), "05 / 17 · title · accuracy" top left, and a plain-language clock top right ("1.3 seconds after the Big Bang", "4.6 billion years ago") with the temperature under it.
+- **Scroll length** 60 → 80 svh per chapter weight (~81 screens in total) so every caption has reading time.
+- **Accessibility**: the story text stays in the DOM as screen-reader-only sections (the visual layer is `aria-hidden`); stage changes are announced politely. Keyboard ↑/↓/Page keys step one caption at a time.
+- **Longer text** (MDX bodies, "How we know", sources) moved to a "Stage by stage" appendix of `<details>` after the journey.
 
 ## Delivery
 

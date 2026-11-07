@@ -1,6 +1,6 @@
 # Cosmic History
 
-A scroll-driven, full-screen 3D journey through the history of the universe, from the Planck epoch to today. Scroll is time; a timeline rail is the navigation; a persistent WebGPU/WebGL2 canvas renders each epoch from a shared cosmology module; every scene declares how accurate it is.
+A scroll-driven, full-screen 3D journey through the history of the universe, from the Planck epoch to today. Scroll is time; captions narrate each stage one at a time; a persistent WebGPU/WebGL2 canvas renders each epoch from a shared cosmology module; every scene declares how accurate it is.
 
 ```
 pnpm install

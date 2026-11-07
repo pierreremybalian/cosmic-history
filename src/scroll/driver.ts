@@ -5,7 +5,8 @@ import Lenis from 'lenis';
 import { $progress, $reducedMotion } from '../state/store.ts';
 import { CHAPTERS, CHAPTER_STARTS } from '../time/chapters.ts';
 
-export const VH_PER_WEIGHT = 60;
+/** Scroll length per unit of chapter weight. Sized for reading: every caption gets ≥ MIN_DWELL_SVH of scroll. */
+export const VH_PER_WEIGHT = 80;
 
 export interface ScrollDriver {
   lenis: Lenis;

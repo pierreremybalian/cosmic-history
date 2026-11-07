@@ -2,10 +2,11 @@
 import { getCollection, render } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import Renderer from '../render/Renderer.astro';
-import TimelineNav from '../nav/TimelineNav.astro';
+import Narration, { type NarrationCaption } from '../story/Narration.astro';
 import Hud from '../hud/Hud.astro';
 import { CHAPTERS, CHAPTER_STARTS } from '../time/chapters.ts';
 import { VH_PER_WEIGHT } from '../scroll/driver.ts';
+import { HERO_END, MIN_DWELL_SVH, captionSchedule } from '../story/schedule.ts';
 import { ACCURACY_HELP, ACCURACY_LABEL, CREDITS, SITE } from '../data/site.ts';
 import { AGE_LABEL } from '../time/format.ts';
 import { supHtml } from '../lib/sup.ts';
@@ -16,13 +17,11 @@ const chapters = await Promise.all(
   CHAPTERS.map(async (c, i) => {
     const entry = byId.get(c.id);
     const rendered = entry ? await render(entry) : null;
-    const p0 = CHAPTER_STARTS[i]!;
-    const p1 = CHAPTER_STARTS[i + 1]!;
     return {
       c,
       i,
-      p0,
-      p1,
+      p0: CHAPTER_STARTS[i]!,
+      p1: CHAPTER_STARTS[i + 1]!,
       data: entry?.data ?? {
         id: c.id,
         title: c.id,
@@ -36,67 +35,60 @@ const chapters = await Promise.all(
     };
   }),
 );
-const titles = Object.fromEntries(chapters.map((ch) => [ch.c.id, ch.data.title]));
 const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
+const totalSvh = totalWeight * VH_PER_WEIGHT;
+
+// One caption at a time: each chapter's intro card, then its beats (src/story/schedule.ts).
+const schedule = captionSchedule(
+  chapters.map(({ p0, p1, data }) => ({ p0, p1, beats: data.beats.map((b) => b.local) })),
+  { heroEnd: HERO_END, minDwell: MIN_DWELL_SVH / totalSvh },
+);
+const captions: NarrationCaption[] = schedule.map(({ chapter, beat, start }) => {
+  const d = chapters[chapter]!.data;
+  if (beat < 0) return { chapter, start, kind: 'intro', kicker: d.kicker, title: d.title, text: d.summary };
+  const b = d.beats[beat]!;
+  return { chapter, start, kind: 'beat', time: b.time, text: b.text };
+});
+/** Keyboard stops land just inside each caption's window. */
+const stopOf = (chapter: number, beat: number) =>
+  schedule.find((c) => c.chapter === chapter && c.beat === beat)!.start + 0.25 * (MIN_DWELL_SVH / totalSvh);
+const titles = chapters.map((ch) => ch.data.title);
 ---
 
 <Base>
   <Renderer />
-  <TimelineNav titles={titles} />
+  <Narration captions={captions} titles={titles} />
   <Hud />
 
   <header class="hero" data-hero>
     <p class="hero-kicker">{AGE_LABEL} in one scroll</p>
     <h1>{SITE.name}</h1>
     <p class="hero-lede">
-      From the first instant physics can describe to this one. Scroll to move through time. Every scene says how sure we are.
+      A guided journey from the first instant physics can describe to this one. Scroll, and the universe tells its story
+      stage by stage.
     </p>
-    <p class="hero-hint" aria-hidden="true"><span></span>Scroll</p>
+    <p class="hero-hint" aria-hidden="true"><span></span>Scroll to begin</p>
   </header>
 
-  <main id="story" class="story" data-story style={`height: calc(${totalWeight * VH_PER_WEIGHT}svh + 100svh)`}>
+  <main id="story" class="story" data-story style={`height: calc(${totalSvh}svh + 100svh)`}>
     {
-      chapters.map(({ c, i, p0, p1, data, Content }) => (
+      chapters.map(({ c, i, p0, data }) => (
         <section
           id={c.id}
           class="chapter"
           data-chapter={c.id}
           aria-labelledby={`h-${c.id}`}
-          style={`top: ${(p0 * totalWeight * VH_PER_WEIGHT).toFixed(3)}svh; height: ${(c.scrollWeight * VH_PER_WEIGHT).toFixed(3)}svh`}
+          style={`top: ${(p0 * totalSvh).toFixed(3)}svh; height: ${(c.scrollWeight * VH_PER_WEIGHT).toFixed(3)}svh`}
         >
-          <div class="head" style={i === 0 ? 'top: 92svh' : undefined}>
-            <p class="kicker" set:html={supHtml(data.kicker)} />
-            <h2 id={`h-${c.id}`}>{data.title}</h2>
-            {data.summary && <p class="summary" set:html={supHtml(data.summary)} />}
-            {Content && (
-              <div class="body">
-                <Content />
-              </div>
-            )}
-          </div>
-          {data.beats.map((b) => (
-            <p class="beat" style={`top: calc(${(b.local * 100).toFixed(3)}% + 52svh)`} data-beat-progress={p0 + b.local * (p1 - p0)}>
-              {b.time && <span class="beat-time" set:html={supHtml(b.time)} />}
+          <p class="kicker" set:html={supHtml(`Stage ${i + 1} · ${data.kicker}`)} />
+          <h2 id={`h-${c.id}`}>{data.title}</h2>
+          {data.summary && <p set:html={supHtml(data.summary)} />}
+          {data.beats.map((b, k) => (
+            <p data-beat-progress={stopOf(i, k)}>
+              {b.time && <span set:html={supHtml(`${b.time}: `)} />}
               <Fragment set:html={supHtml(b.text)} />
             </p>
           ))}
-          {data.howWeKnow && (
-            <details class="how" style={`top: calc(${((data.beats.at(-1)?.local ?? 0.8) * 100).toFixed(2)}% + 74svh)`}>
-              <summary>How we know</summary>
-              <p set:html={supHtml(data.howWeKnow)} />
-              {data.sources.length > 0 && (
-                <ul>
-                  {data.sources.map((s) => (
-                    <li>
-                      <a href={s.url} rel="noopener" target="_blank">
-                        {s.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </details>
-          )}
         </section>
       ))
     }
@@ -109,6 +101,42 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
         Expansion, temperature, colour and composition on screen are computed in your browser from the Planck 2018 cosmology. Where we
         exaggerate a count, a speed or a ratio to make it visible, the scene says so.
       </p>
+      <h3>Stage by stage: the longer story and how we know</h3>
+      <div class="stages">
+        {
+          chapters.map(({ i, data, Content }) => (
+            <details class="stage">
+              <summary>
+                <span class="n">{String(i + 1).padStart(2, '0')}</span>
+                <span class="t">{data.title}</span>
+                <span class="k" set:html={supHtml(data.kicker)} />
+              </summary>
+              {Content && (
+                <div class="body">
+                  <Content />
+                </div>
+              )}
+              {data.howWeKnow && (
+                <>
+                  <h4>How we know</h4>
+                  <p set:html={supHtml(data.howWeKnow)} />
+                </>
+              )}
+              {data.sources.length > 0 && (
+                <ul>
+                  {data.sources.map((src) => (
+                    <li>
+                      <a href={src.url} rel="noopener" target="_blank">
+                        {src.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          ))
+        }
+      </div>
       <h3>How sure are we?</h3>
       <dl class="acc">
         {(Object.keys(ACCURACY_LABEL) as (keyof typeof ACCURACY_LABEL)[]).map((k) => (
@@ -135,8 +163,8 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
         ))}
       </ul>
       <p class="fine">
-        Keyboard: ↑ ↓ / Page Up / Page Down step through moments, Home and End jump to the start and to now. Rendering quality can be changed
-        in the timeline panel.
+        Keyboard: ↑ ↓ / Page Up / Page Down step through the story one caption at a time; Home and End jump to the start and to now.
+        Rendering quality adapts to your device automatically.
       </p>
     </div>
   </footer>
@@ -149,6 +177,7 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
 <script>
   import { createScrollDriver } from '../scroll/driver.ts';
   import { $progress } from '../state/store.ts';
+  import { HERO_END } from '../story/schedule.ts';
 
   document.documentElement.classList.add('js');
   // ?clean=1 hides all HTML overlays (stills / OG capture); ?clean=hero keeps the title card.
@@ -159,44 +188,14 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
 
   const hero = document.querySelector<HTMLElement>('[data-hero]')!;
   $progress.subscribe((p) => {
-    const o = Math.max(0, 1 - p / 0.012);
+    const o = Math.max(0, 1 - p / HERO_END);
     hero.style.opacity = String(o);
     hero.style.visibility = o === 0 ? 'hidden' : 'visible';
   });
-
-  // De-overlap the narrative: every text block wants to sit where its moment plays (inline `top`), but blocks
-  // never overlap; later blocks are pushed down just enough. Re-run on resize, font load and <details> toggles.
-  const blocks = [...document.querySelectorAll<HTMLElement>('.chapter > .head, .chapter > .beat, .chapter > .how')];
-  const desired = new Map<HTMLElement, string>();
-  blocks.forEach((b) => desired.set(b, b.style.top));
-  const layout = () => {
-    const gap = Math.max(24, window.innerHeight * 0.05);
-    let prevBottom = -Infinity;
-    for (const b of blocks) {
-      b.style.top = desired.get(b) ?? '';
-      const section = b.parentElement!;
-      const want = section.offsetTop + b.offsetTop;
-      const y = Math.max(want, prevBottom + gap);
-      if (y !== want) b.style.top = `${y - section.offsetTop}px`;
-      prevBottom = y + b.offsetHeight;
-    }
-  };
-  layout();
-  window.addEventListener('resize', layout);
-  void document.fonts?.ready.then(layout);
-  document.querySelectorAll('details.how').forEach((d) => d.addEventListener('toggle', layout));
-
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const e of entries) e.target.classList.toggle('is-visible', e.isIntersecting);
-    },
-    { rootMargin: '-12% 0px -18% 0px' },
-  );
-  document.querySelectorAll('.beat, .head, .how').forEach((el) => io.observe(el));
 </script>
 
 <style>
-  :global(html.clean .rail),
+  :global(html.clean .narration),
   :global(html.clean .hud),
   :global(html.clean-1 .hero) {
     display: none !important;
@@ -285,117 +284,24 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
     position: absolute;
     left: 0;
     right: 0;
-    pointer-events: none;
-  }
-  .chapter > * {
-    pointer-events: auto;
-  }
-  .head,
-  .beat,
-  .how {
-    position: absolute;
-    left: max(1.5rem, 6vw);
-    width: min(30rem, calc(100vw - var(--rail-w) - 4rem));
-  }
-  .head {
-    top: 30svh;
-    text-shadow: 0 1px 24px rgb(0 0 0 / 0.75);
-  }
-  .kicker {
-    font-family: var(--font-mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--color-glow);
-  }
-  .head h2 {
-    font-family: var(--font-serif);
-    font-weight: 350;
-    font-size: clamp(2.2rem, 4.6vw, 3.8rem);
-    line-height: 1.02;
-    letter-spacing: -0.02em;
-    color: var(--color-paper);
-    margin-top: 0.5rem;
-  }
-  .summary {
-    margin-top: 0.9rem;
-    font-family: var(--font-serif);
-    font-size: 1.2rem;
-    font-style: italic;
-    line-height: 1.45;
-    color: var(--color-fog);
-  }
-  .body {
-    margin-top: 0.9rem;
-    font-size: 0.98rem;
-    line-height: 1.6;
-    color: var(--color-fog);
-  }
-  .body :global(p + p) {
-    margin-top: 0.7rem;
-  }
-  .beat {
-    font-family: var(--font-serif);
-    font-size: clamp(1.15rem, 1.6vw, 1.4rem);
-    line-height: 1.45;
-    color: var(--color-paper);
-    padding: 0.9rem 1.1rem;
-    background: rgb(4 5 12 / 0.42);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    border-left: 2px solid rgb(255 217 160 / 0.6);
-    border-radius: 0 0.6rem 0.6rem 0;
-  }
-  .beat-time {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    letter-spacing: 0.1em;
-    color: var(--color-glow);
-    margin-bottom: 0.25rem;
-  }
-  :global(html.js) .head,
-  :global(html.js) .beat,
-  :global(html.js) .how {
-    opacity: 0;
-    transform: translateY(14px);
-    transition:
-      opacity 0.9s var(--ease-cosmic),
-      transform 0.9s var(--ease-cosmic);
-  }
-  :global(html.js) .is-visible {
-    opacity: 1;
-    transform: none;
-  }
-  .how {
-    font-size: 0.85rem;
-    color: var(--color-fog);
-    background: rgb(4 5 12 / 0.6);
-    border: 1px solid var(--color-line);
-    border-radius: 0.6rem;
-    padding: 0.6rem 0.9rem;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  .how summary {
-    cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--color-signal);
-  }
-  .how p {
-    margin-top: 0.6rem;
-    line-height: 1.55;
-  }
-  .how ul {
-    margin-top: 0.5rem;
+    padding: 30svh max(1.5rem, 6vw) 0;
+    max-width: 40rem;
     display: grid;
-    gap: 0.25rem;
-    font-size: 0.78rem;
+    align-content: start;
+    gap: 1rem;
   }
-  .how a,
+  /* With JS the narration layer shows this text one caption at a time; keep it for screen readers only. */
+  :global(html.js) .chapter > * {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .credits a {
     color: var(--color-signal);
     text-decoration: underline;
@@ -486,18 +392,91 @@ const totalWeight = CHAPTERS.reduce((s, c) => s + c.scrollWeight, 0);
     border: 1px solid var(--color-line);
     border-radius: 0.6rem;
   }
+  .stages {
+    margin-top: 0.9rem;
+    border-top: 1px solid var(--color-line);
+  }
+  .stage {
+    border-bottom: 1px solid var(--color-line);
+  }
+  .stage summary {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr auto;
+    align-items: baseline;
+    gap: 0.8rem;
+    padding: 0.85rem 0;
+    cursor: pointer;
+    list-style: none;
+  }
+  .stage summary::-webkit-details-marker {
+    display: none;
+  }
+  .stage .n,
+  .stage .k {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: var(--color-mute);
+  }
+  .stage .t {
+    font-family: var(--font-serif);
+    font-size: 1.2rem;
+    color: var(--color-paper);
+  }
+  .stage summary:hover .t {
+    color: var(--color-glow);
+  }
+  .stage[open] .t {
+    color: var(--color-glow);
+  }
+  .stage .body,
+  .stage > p,
+  .stage h4,
+  .stage ul {
+    margin-left: 3rem;
+  }
+  .stage .body {
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  .stage .body :global(p + p) {
+    margin-top: 0.7rem;
+  }
+  .stage h4 {
+    margin-top: 1.1rem;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-signal);
+  }
+  .stage > p {
+    margin-top: 0.4rem;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  .stage ul {
+    margin-top: 0.7rem;
+    margin-bottom: 1.2rem;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+  }
   @media (max-width: 767px) {
-    .head,
-    .beat,
-    .how {
-      left: 1rem;
-      width: calc(100vw - 2rem);
-    }
-    .head {
-      top: 42svh;
-    }
     .hero {
       padding-top: 4rem;
+    }
+    .stage summary {
+      grid-template-columns: 1.8rem 1fr;
+    }
+    .stage .k {
+      display: none;
+    }
+    .stage .body,
+    .stage > p,
+    .stage h4,
+    .stage ul {
+      margin-left: 0;
     }
   }
 </style>

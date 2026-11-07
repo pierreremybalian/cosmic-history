@@ -42,8 +42,6 @@
   --cat-dark: var(--color-cat-dark);
   --cat-structure: var(--color-cat-structure);
   --cat-life: var(--color-cat-life);
-  --vh-per-weight: 60svh;
-  --rail-w: 15rem;
   color-scheme: dark;
 }
 
